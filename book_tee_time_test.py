@@ -76,9 +76,12 @@ async def login(page) -> bool:
 
 
 async def click_book_a_tee_time(page) -> bool:
-    print("\nStep 2: Clicking BOOK A TEE TIME...")
-    try:
-        await page.click('a:has-text("BOOK A TEE TIME"), button:has-text("BOOK A TEE TIME")', timeout=5000)
+    print("\nStep 2: Going directly to tee sheet...")
+    await page.goto("https://members.brsgolf.com/beaverstown/tee-sheet/1", wait_until="networkidle")
+    await page.wait_for_timeout(2000)
+    await page.screenshot(path="debug_04_after_book_button.png", full_page=True)
+    print("  On tee sheet!")
+    return True
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(2000)
         await page.screenshot(path="debug_04_after_book_button.png")
