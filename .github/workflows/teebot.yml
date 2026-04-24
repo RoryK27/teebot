@@ -1,0 +1,45 @@
+name: TeeBot - Book Tee Times
+
+on:
+  schedule:
+    # Every Monday at 8:28 PM BST (19:28 UTC in summer)
+    - cron: '28 19 * * 1'
+  workflow_dispatch:  # Manual trigger for testing
+
+jobs:
+  book-tee-time:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run TeeBot
+        env:
+          BRS_URL:   ${{ secrets.BRS_URL }}
+          BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
+          BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python book_tee_time.py
+
+      - name: Upload confirmation screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-confirmations
+          path: |
+            confirmation_*.png
+            error_*.png
+          retention-days: 14
