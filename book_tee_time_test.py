@@ -1,31 +1,29 @@
 """
 TeeBot TEST SCRIPT - Beaverstown Golf Club BRS
-Logs in, navigates tee sheet, selects date and books the target time.
+Goes directly to tee sheet URL, navigates to date, clicks BOOK NOW.
 """
 
 import asyncio, os, json, urllib.request
 from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
-BRS_URL      = "https://members.brsgolf.com/beaverstown"
-TEE_SHEET_URL = "https://members.brsgolf.com/beaverstown/tee-sheet/1"
+BRS_LOGIN_URL  = "https://members.brsgolf.com/beaverstown"
+TEE_SHEET_URL  = "https://members.brsgolf.com/beaverstown/tee-sheet/1"
+
 BRS_EMAIL    = os.environ["BRS_EMAIL"]
 BRS_PASSWORD = os.environ["BRS_PASSWORD"]
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 REPO         = os.environ.get("GITHUB_REPOSITORY", "")
 
-DAY_MAP = {
-    "monday":0,"tuesday":1,"wednesday":2,"thursday":3,
-    "friday":4,"saturday":5,"sunday":6
-}
-
 DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
+DEFAULT_BOOKING = {"label": "Monday Evening", "day_of_week": 0, "target_time": "18:00"}
+
+DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
 
 def load_plan():
-    """Load players + bookings from players.json."""
     if not GITHUB_TOKEN or not REPO:
-        return DEFAULT_PLAYERS, [{"label":"Monday Evening","day_of_week":0,"target_time":"18:00"}]
+        return DEFAULT_PLAYERS, [DEFAULT_BOOKING]
     url = f"https://api.github.com/repos/{REPO}/contents/players.json"
     req = urllib.request.Request(url, headers={
         "Authorization": f"token {GITHUB_TOKEN}",
@@ -35,113 +33,98 @@ def load_plan():
         with urllib.request.urlopen(req) as resp:
             data = json.loads(resp.read().decode())
             players  = data.get("players", DEFAULT_PLAYERS)[:4]
-            bookings = data.get("bookings", [{"label":"Monday Evening","day_of_week":0,"target_time":"18:00"}])
-            print(f"Players : {', '.join(players)}")
-            print(f"Bookings: {[(b['label'], b['target_time']) for b in bookings]}")
+            bookings = data.get("bookings", [DEFAULT_BOOKING])
             return players, bookings
     except Exception as e:
         print(f"Could not read players.json: {e} — using defaults")
-        return DEFAULT_PLAYERS, [{"label":"Monday Evening","day_of_week":0,"target_time":"18:00"}]
+        return DEFAULT_PLAYERS, [DEFAULT_BOOKING]
 
 
-def get_next_date_for_dow(dow: int):
+def get_next_date_for_dow(dow: int) -> datetime:
     today = datetime.now()
     days_ahead = (dow - today.weekday()) % 7 or 7
-    target = today + timedelta(days=days_ahead)
-    return target, target.strftime("%d/%m/%Y")
+    return today + timedelta(days=days_ahead)
 
 
 async def login(page) -> bool:
-    print("\n Logging in...")
-    await page.goto(BRS_URL, wait_until="networkidle")
+    print("Logging in...")
+    await page.goto(BRS_LOGIN_URL, wait_until="networkidle")
+    await page.wait_for_timeout(1500)
     await page.screenshot(path="debug_01_landing.png")
     try:
-        # Fill username (GUI number) and password
-        await page.fill('input[name="username"], input[placeholder*="GUI"], input[placeholder*="digit"], input[type="text"]', BRS_EMAIL)
+        await page.fill('input[name="username"], input[type="text"]', BRS_EMAIL)
         await page.fill('input[type="password"]', BRS_PASSWORD)
         await page.screenshot(path="debug_02_credentials_filled.png")
-        await page.click('button:has-text("LOGIN"), input[value="LOGIN"], button[type="submit"]')
+        await page.click('button:has-text("LOGIN")')
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(2000)
         await page.screenshot(path="debug_03_after_login.png")
-        print(" Logged in successfully")
-        return True
+
+        # Check we're logged in by looking for membership number on page
+        content = await page.content()
+        if "31220248" in content or "Logout" in content or "Tee Sheet" in content:
+            print("Logged in successfully!")
+            return True
+        else:
+            print("Login may have failed — unexpected page content")
+            await page.screenshot(path="error_login.png")
+            return False
     except Exception as e:
-        print(f" Login failed: {e}")
+        print(f"Login error: {e}")
         await page.screenshot(path="error_login.png")
         return False
 
 
-async def navigate_to_tee_sheet(page, target_date: datetime) -> bool:
-    """Click Tee Sheet in menu and navigate to the correct date."""
-    print(f"\n Navigating to tee sheet...")
-    try:
-        # Click "Tee Sheet" in left nav
-        await page.click('a:has-text("Tee Sheet"), a[href*="tee-sheet"]', timeout=5000)
-        await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(2000)
-        await page.screenshot(path="debug_04_tee_sheet.png")
-        print(" On tee sheet page")
-    except Exception as e:
-        print(f" Could not click Tee Sheet nav: {e} — going directly")
-        await page.goto(TEE_SHEET_URL, wait_until="networkidle")
-        await page.wait_for_timeout(2000)
-        await page.screenshot(path="debug_04_tee_sheet.png")
+async def go_to_date(page, target_dt: datetime) -> bool:
+    """Navigate directly to the tee sheet and click to the right date."""
 
-    # Now navigate to the right date
-    # BRS shows a date at the top — we need to click forward/back arrows to reach our date
-    print(f" Looking for date: {target_date.strftime('%a %d %b').upper()}")
-    await select_date(page, target_date)
-    return True
+    # BRS uses date in URL format — try direct URL first
+    date_str_url = target_dt.strftime("%Y-%m-%d")
+    direct_url = f"{TEE_SHEET_URL}?date={date_str_url}"
 
+    print(f"\nNavigating to tee sheet for {target_dt.strftime('%A %d %B')}...")
+    print(f"Trying direct URL: {direct_url}")
 
-async def select_date(page, target_date: datetime):
-    """Click the forward arrow on the calendar until we reach the target date."""
-    target_str_variants = [
-        target_date.strftime("%a %d %b").upper(),      # MON 27 APR
-        target_date.strftime("%-d %b").upper(),         # 27 APR
-        target_date.strftime("%d/%m/%Y"),               # 27/04/2025
-        target_date.strftime("%A %d %B"),               # Monday 27 April
-        target_date.strftime("%d %b").upper(),          # 27 APR
-    ]
+    await page.goto(direct_url, wait_until="networkidle")
+    await page.wait_for_timeout(2000)
+    await page.screenshot(path="debug_04_tee_sheet_direct.png")
 
-    print(f" Target date variants: {target_str_variants}")
+    # Check if we landed on the right date
+    content = await page.content()
+    day_name = DAY_NAMES[target_dt.weekday()].upper()
+    day_num  = str(target_dt.day)
+    month    = target_dt.strftime("%b").upper()
 
-    # Check if already on the right date
-    for variant in target_str_variants:
-        try:
-            content = await page.content()
-            if variant in content.upper():
-                print(f" Already on correct date: {variant}")
-                return
-        except:
-            pass
+    print(f"Looking for: {day_name} {day_num} {month} in page")
 
-    # Click the forward (>) arrow up to 14 times to find the date
-    for attempt in range(14):
-        await page.screenshot(path=f"debug_date_nav_{attempt:02d}.png")
+    if day_num in content and month in content:
+        print(f"Found target date on page!")
+        return True
 
-        # Check current page for our target date
+    # If direct URL didn't work, go to base tee sheet and use arrows
+    print("Direct URL didn't land on correct date — navigating with arrows...")
+    await page.goto(TEE_SHEET_URL, wait_until="networkidle")
+    await page.wait_for_timeout(2000)
+
+    for attempt in range(10):
+        await page.screenshot(path=f"debug_nav_{attempt:02d}.png")
         content = await page.content()
-        for variant in target_str_variants:
-            if variant in content.upper():
-                print(f" Found target date after {attempt} clicks: {variant}")
-                return
 
-        # Click the next day arrow
-        next_selectors = [
-            'a[aria-label="next"]',
-            'button[aria-label="next"]',
-            '.next-day',
-            '.fc-next-button',
-            'a:has-text(">")',
-            'button:has-text(">")',
-            '.arrow-right',
-            '[class*="next"]',
-        ]
+        if day_num in content and month in content:
+            print(f"Found date after {attempt} arrow clicks")
+            return True
 
+        # Try clicking the right/next arrow
         clicked = False
-        for sel in next_selectors:
+        for sel in [
+            '.fc-next-button',
+            'a[title="next day"]',
+            'button[title="next day"]',
+            '[aria-label="next"]',
+            'a:has-text(">")',
+            '.next',
+            'a[href*="tee-sheet"]:has-text(">")',
+        ]:
             try:
                 await page.click(sel, timeout=2000)
                 await page.wait_for_timeout(1000)
@@ -151,125 +134,131 @@ async def select_date(page, target_date: datetime):
                 continue
 
         if not clicked:
-            print(f" Could not find next arrow on attempt {attempt}")
+            # Try clicking the date header itself
+            try:
+                header = await page.text_content('.date-header, .tee-sheet-date, h2, h3')
+                print(f"Current date header: {header}")
+            except:
+                pass
+            print(f"Could not find next arrow on attempt {attempt}")
             break
 
-    await page.screenshot(path="debug_date_final.png")
+    return True  # Continue anyway and try to book
 
 
-async def book_slot(page, target_time: str, players: list) -> bool:
-    """Find and click the BOOK NOW button for the target time."""
-    print(f"\n Looking for {target_time} slot...")
-    await page.screenshot(path="debug_05_before_booking.png")
+async def click_book_now(page, target_time: str) -> bool:
+    """Find the BOOK NOW button next to our target time and click it."""
+    print(f"\nLooking for BOOK NOW at {target_time}...")
+    await page.screenshot(path="debug_05_looking_for_time.png")
 
-    # Try clicking BOOK NOW button next to the target time
-    # BRS layout: time is in left column, BOOK NOW button on the right of same row
-    time_variants = [target_time, target_time.replace(":","")]  # "18:00" or "1800"
-
-    for t in time_variants:
-        try:
-            # Try finding a row containing the time and clicking Book Now within it
-            row = page.locator(f'tr:has-text("{t}"), div:has-text("{t}")')
-            await row.locator('a:has-text("BOOK NOW"), button:has-text("BOOK NOW")').first.click(timeout=3000)
-            print(f" Clicked BOOK NOW for {t}")
-            await page.wait_for_load_state("networkidle")
-            await page.wait_for_timeout(2000)
-            await page.screenshot(path="debug_06_after_book_now.png")
-            return await complete_booking(page, players)
-        except Exception as e:
-            print(f" Row approach failed for {t}: {e}")
-
-    # Fallback: find all BOOK NOW buttons and pick the one nearest our time
+    # Print page structure for debugging
     try:
-        # Get page content and find the right button by position
-        await page.evaluate(f"""
-            const rows = document.querySelectorAll('tr, .slot-row, [class*="row"]');
-            for (const row of rows) {{
-                if (row.textContent.includes('{target_time}')) {{
-                    const btn = row.querySelector('a, button');
-                    if (btn && btn.textContent.includes('BOOK')) btn.click();
+        content = await page.content()
+        if target_time in content:
+            print(f"'{target_time}' IS found in page content")
+        else:
+            print(f"'{target_time}' NOT found in page — printing visible times...")
+            # Find all times visible on page
+            times = await page.locator('text=/\\d{2}:\\d{2}/').all_text_contents()
+            print(f"Times visible: {times[:10]}")
+    except:
+        pass
+
+    # Method 1: Find row with the time and click its Book Now button
+    try:
+        # Use XPath-style to find BOOK NOW link in same row as time
+        await page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first.click(timeout=5000)
+        print(f"Method 1: Clicked BOOK NOW in row with {target_time}")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_timeout(2000)
+        await page.screenshot(path="debug_06_after_book_now.png")
+        return True
+    except Exception as e:
+        print(f"Method 1 failed: {e}")
+
+    # Method 2: JavaScript — find the time cell and click adjacent Book Now
+    try:
+        clicked = await page.evaluate(f"""
+            () => {{
+                // Find all cells/elements containing the target time
+                const allElements = document.querySelectorAll('td, div, span');
+                for (const el of allElements) {{
+                    if (el.textContent.trim() === '{target_time}') {{
+                        // Look in parent row for a Book Now link
+                        const row = el.closest('tr') || el.parentElement;
+                        if (row) {{
+                            const links = row.querySelectorAll('a, button');
+                            for (const link of links) {{
+                                if (link.textContent.includes('BOOK') || link.textContent.includes('Book')) {{
+                                    link.click();
+                                    return true;
+                                }}
+                            }}
+                        }}
+                    }}
                 }}
+                return false;
             }}
         """)
-        await page.wait_for_timeout(2000)
-        await page.screenshot(path="debug_06_after_js_click.png")
-        return await complete_booking(page, players)
+        if clicked:
+            print("Method 2: Clicked via JavaScript")
+            await page.wait_for_load_state("networkidle")
+            await page.wait_for_timeout(2000)
+            await page.screenshot(path="debug_06_after_js_click.png")
+            return True
+        else:
+            print("Method 2: Time found but no Book Now button in same row")
     except Exception as e:
-        print(f" JS fallback failed: {e}")
+        print(f"Method 2 failed: {e}")
 
+    # Method 3: Screenshot the full page so we can see what's there
+    await page.screenshot(path="debug_full_page.png", full_page=True)
+    print("Saved full page screenshot — check debug_full_page.png")
     return False
 
 
 async def complete_booking(page, players: list) -> bool:
-    """Fill in the booking form and confirm."""
-    print(f"\n Completing booking form...")
+    """Fill in player details and confirm the booking."""
+    print(f"\nCompleting booking for {', '.join(players)}...")
     await page.screenshot(path="debug_07_booking_form.png")
 
-    # Set number of players (4)
+    # Set player count to 4
     try:
-        await page.select_option('select[name*="player"], select[name*="guest"], #players', str(len(players)))
-        print(f" Set player count to {len(players)}")
+        await page.select_option('select', str(len(players)))
+        print(f"Set player count to {len(players)}")
     except:
-        for _ in range(len(players) - 1):
-            try:
-                await page.click('button:has-text("+"), .btn-plus, [class*="increase"]', timeout=2000)
-                await page.wait_for_timeout(300)
-            except:
-                break
-
-    # Try to add buddy names from the buddy list search
-    for i, player in enumerate(players):
-        try:
-            # BRS buddy search — type name and select from dropdown
-            search_selectors = [
-                f'input[placeholder*="buddy"]:nth-of-type({i+1})',
-                f'input[placeholder*="search"]:nth-of-type({i+1})',
-                f'input[placeholder*="member"]:nth-of-type({i+1})',
-                f'.buddy-search input:nth-of-type({i+1})',
-            ]
-            for sel in search_selectors:
-                try:
-                    await page.fill(sel, player.split(",")[0].strip(), timeout=2000)
-                    await page.wait_for_timeout(800)
-                    await page.click('.autocomplete-suggestion:first-child, li[role="option"]:first-child, .dropdown-item:first-child', timeout=2000)
-                    print(f" Added {player}")
-                    break
-                except:
-                    continue
-        except:
-            pass
+        pass
 
     await page.wait_for_timeout(1000)
-    await page.screenshot(path="debug_08_form_filled.png")
 
-    # Click Confirm / Book
+    # Confirm / Book button
     for sel in [
         'button:has-text("Confirm")',
-        'button:has-text("Book")',
+        'button:has-text("CONFIRM")',
         'a:has-text("Confirm")',
+        'button:has-text("Book")',
         'input[value="Confirm"]',
         'button[type="submit"]',
-        '.btn-confirm',
     ]:
         try:
             await page.click(sel, timeout=3000)
-            print(" Clicked confirm!")
+            print(f"Clicked confirm!")
             await page.wait_for_timeout(3000)
             await page.screenshot(path="confirmation_test.png", full_page=True)
             return True
         except:
             continue
 
-    await page.screenshot(path="debug_09_no_confirm_found.png")
+    await page.screenshot(path="debug_08_no_confirm.png")
     return False
 
 
 async def main():
     players, bookings = load_plan()
-    booking = bookings[0]  # For test, just run the first booking
-    dow = booking.get("day_of_week", 0)
+    booking    = bookings[0]
+    dow        = booking.get("day_of_week", 0)
     target_time = booking.get("target_time", "18:00")
-    target_dt, target_date_str = get_next_date_for_dow(dow)
+    target_dt   = get_next_date_for_dow(dow)
 
     print("=" * 54)
     print("  TeeBot TEST — Beaverstown Golf Club")
@@ -283,20 +272,23 @@ async def main():
         page    = await browser.new_page(viewport={"width": 1280, "height": 900})
 
         if not await login(page):
-            print("Login failed — check BRS_EMAIL and BRS_PASSWORD secrets")
+            print("Login failed — check your BRS_EMAIL secret (should be GUI number 31220248)")
             await browser.close()
             return
 
-        await navigate_to_tee_sheet(page, target_dt)
-        await page.wait_for_timeout(1500)
-        await page.screenshot(path="debug_05_date_page.png")
+        await go_to_date(page, target_dt)
 
-        success = await book_slot(page, target_time, players)
+        success = await click_book_now(page, target_time)
+
+        if success:
+            await complete_booking(page, players)
+        else:
+            print("\nCould not find the time slot — check debug_full_page.png to see what the bot saw")
 
         await browser.close()
 
     print("\n" + "=" * 54)
-    print(f"  Result: {'BOOKED!' if success else 'Check screenshots for details'}")
+    print(f"  Done — check screenshots in Artifacts")
     print("=" * 54)
 
 
