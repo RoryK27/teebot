@@ -1,0 +1,18 @@
+{
+  "players": [
+    "Kirwan, Rory",
+    "Carrick, Paul",
+    "Kelly, Edward",
+    "Lynch, Simonn"
+  ],
+  "bookings": [
+    {
+      "label": "Monday Evening",
+      "day_of_week": 0,
+      "target_time": "18:00",
+      "players": 4
+    }
+  ],
+  "updated": "2025-01-01T00:00:00Z",
+  "club_url": "https://members.brsgolf.com/beaverstown/tee-sheet/1"
+}
