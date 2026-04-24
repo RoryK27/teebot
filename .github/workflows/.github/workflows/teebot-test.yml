@@ -1,0 +1,57 @@
+name: TeeBot - ONE-OFF TEST (Manual Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_day:
+        description: 'Day to book (e.g. Monday)'
+        required: true
+        default: 'Monday'
+      target_time:
+        description: 'Time to book (HH:MM, 24hr)'
+        required: true
+        default: '18:00'
+      players:
+        description: 'Comma-separated player names in BRS format'
+        required: true
+        default: 'Kirwan, Rory, Kirwan, Lisa, Carrick, Paul, Hennelly, Ronan'
+
+jobs:
+  test-booking:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run one-off test booking
+        env:
+          BRS_URL: ${{ secrets.BRS_URL }}
+          BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
+          BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TEST_DAY: ${{ github.event.inputs.target_day }}
+          TEST_TIME: ${{ github.event.inputs.target_time }}
+        run: python book_tee_time_test.py
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-booking-screenshots
+          path: |
+            confirmation_*.png
+            error_*.png
+            debug_*.png
+          retention-days: 7
