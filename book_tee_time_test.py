@@ -73,7 +73,7 @@ async def main():
         await page.screenshot(path="debug_01_landing.png")
 
         try:
-            await page.fill('input[type="email"], input[name="email"], input[name="username"]', BRS_EMAIL)
+            await page.fill('input[name="username"], input[placeholder*="GUI"], input[placeholder*="digit"]', BRS_EMAIL)
             await page.fill('input[type="password"]', BRS_PASSWORD)
             await page.screenshot(path="debug_02_credentials_filled.png")
             await page.click('button[type="submit"], input[type="submit"]')
