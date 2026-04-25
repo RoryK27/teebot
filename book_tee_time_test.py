@@ -1,6 +1,12 @@
 """
-TeeBot TEST SCRIPT - Beaverstown Golf Club
-Fixed: always continues after login, goes directly to tee sheet URL
+TeeBot TEST SCRIPT - Beaverstown Golf Club BRS
+Flow:
+1. Login
+2. Go to tee sheet URL
+3. Click the date button (SAT 25TH APR) to open calendar popup
+4. Click target day number in calendar
+5. Click BOOK NOW at target time
+6. Add players and confirm
 """
 
 import asyncio, os, json, urllib.request
@@ -18,10 +24,8 @@ DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, R
 MONTH_NAMES     = ["January","February","March","April","May","June",
                    "July","August","September","October","November","December"]
 
-# ── Hardcoded for this test ───────────────────────────────────────────────────
-TEST_DAY_OF_WEEK = 1        # 1 = Tuesday
+TEST_DAY_OF_WEEK = 1       # 1 = Tuesday
 TEST_TIME        = "18:00"
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def load_players():
@@ -47,12 +51,10 @@ def get_next_date_for_dow(dow: int) -> datetime:
 
 
 async def login(page):
-    """Login — always continues regardless, saves screenshots for debugging."""
     print("Step 1: Logging in...")
     await page.goto(BRS_LOGIN_URL, wait_until="networkidle")
     await page.wait_for_timeout(2000)
     await page.screenshot(path="debug_01_landing.png")
-
     await page.fill('input[name="username"], input[type="text"]', BRS_EMAIL)
     await page.fill('input[type="password"]', BRS_PASSWORD)
     await page.screenshot(path="debug_02_credentials_filled.png")
@@ -60,101 +62,120 @@ async def login(page):
     await page.wait_for_load_state("domcontentloaded")
     await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_03_after_login.png")
-    print(f"  After login URL: {page.url}")
-    print("  Continuing regardless...")
+    print(f"  URL after login: {page.url}")
+    print("  Continuing...")
 
 
 async def go_to_tee_sheet(page):
     print("\nStep 2: Navigating to tee sheet...")
     await page.goto(TEE_SHEET_URL, wait_until="networkidle")
-    await page.wait_for_timeout(2000)
+    await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_04_tee_sheet.png", full_page=True)
     print(f"  URL: {page.url}")
 
 
 async def select_date(page, target_dt: datetime):
+    """Click the date button to open calendar popup, then click the target day."""
     print(f"\nStep 3: Selecting {target_dt.strftime('%A %d %B %Y')}...")
-    await page.screenshot(path="debug_05_before_date.png", full_page=True)
+    target_day   = target_dt.day        # e.g. 29
+    target_month = MONTH_NAMES[target_dt.month - 1]  # e.g. "April"
+    target_year  = str(target_dt.year)  # e.g. "2026"
 
-    target_day  = str(target_dt.day)
-    month_name  = MONTH_NAMES[target_dt.month - 1]
-    date_str    = target_dt.strftime("%Y-%m-%d")
-
-    for attempt in range(10):
-        await page.screenshot(path=f"debug_cal_{attempt:02d}.png")
-        content = await page.content()
-
-        if month_name in content and str(target_dt.year) in content:
-            print(f"  Correct month visible: {month_name} {target_dt.year}")
-
-            # Try data-date attribute
-            try:
-                await page.click(f'[data-date="{date_str}"]', timeout=3000)
-                await page.wait_for_load_state("domcontentloaded")
-                await page.wait_for_timeout(2000)
-                await page.screenshot(path="debug_06_date_selected.png", full_page=True)
-                print(f"  Date selected via data-date!")
-                return
-            except: pass
-
-            # Try td cell
-            try:
-                await page.click(
-                    f'td:has-text("{target_day}"):not(.disabled):not(.old):not(.new)',
-                    timeout=3000
-                )
-                await page.wait_for_load_state("domcontentloaded")
-                await page.wait_for_timeout(2000)
-                await page.screenshot(path="debug_06_date_selected.png", full_page=True)
-                print(f"  Date selected via td!")
-                return
-            except: pass
-
-            # JS fallback
-            clicked = await page.evaluate(f"""
-                () => {{
-                    const cells = document.querySelectorAll('td, .day, a');
-                    for (const cell of cells) {{
-                        if (cell.textContent.trim() === '{target_day}' &&
-                            !cell.classList.contains('disabled') &&
-                            !cell.classList.contains('old')) {{
-                            cell.click();
-                            return true;
-                        }}
-                    }}
-                    return false;
-                }}
+    # Step 3a: Click the date button at the top to open the calendar
+    print("  Clicking date button to open calendar...")
+    try:
+        # The date button shows e.g. "SAT 25TH APR" with a calendar icon
+        await page.click(
+            'button:has-text("APR"), button:has-text("MAY"), button:has-text("JUN"), '
+            'button:has-text("JUL"), button:has-text("AUG"), button:has-text("SEP"), '
+            'a:has-text("APR"), a:has-text("MAY"), '
+            '.date-picker-toggle, [class*="date-btn"], [class*="datepicker-toggle"]',
+            timeout=5000
+        )
+        print("  Opened calendar via button")
+    except:
+        # Try clicking the calendar icon area at top of page
+        try:
+            await page.click('.fa-calendar, .glyphicon-calendar, [class*="calendar-icon"]', timeout=3000)
+            print("  Opened calendar via icon")
+        except:
+            # JS: find and click whatever contains the current date text
+            clicked = await page.evaluate("""
+                () => {
+                    const btns = document.querySelectorAll('button, a, div, span');
+                    for (const btn of btns) {
+                        const text = btn.textContent.trim().toUpperCase();
+                        const months = ['JAN','FEB','MAR','APR','MAY','JUN',
+                                       'JUL','AUG','SEP','OCT','NOV','DEC'];
+                        if (months.some(m => text.includes(m)) && text.length < 30) {
+                            btn.click();
+                            return text;
+                        }
+                    }
+                    return null;
+                }
             """)
-            if clicked:
-                await page.wait_for_timeout(2000)
-                await page.screenshot(path="debug_06_date_selected.png", full_page=True)
-                print(f"  Date selected via JS!")
-                return
+            print(f"  Calendar opened via JS: {clicked}")
 
-            print(f"  Could not click day {target_day} — moving on")
+    await page.wait_for_timeout(1500)
+    await page.screenshot(path="debug_05_calendar_open.png", full_page=True)
+
+    # Step 3b: Navigate to correct month if needed
+    for attempt in range(4):
+        content = await page.content()
+        if target_month in content and target_year in content:
+            print(f"  Correct month showing: {target_month} {target_year}")
+            break
+        # Click next month arrow (>) in the calendar popup
+        try:
+            await page.click('th.next, .datepicker th.next, [aria-label="next month"]', timeout=2000)
+            await page.wait_for_timeout(800)
+            print(f"  Navigated to next month (attempt {attempt})")
+        except:
+            print(f"  Could not navigate month on attempt {attempt}")
             break
 
-        # Click next month
-        clicked_next = False
-        for sel in ['th.next', '.datepicker-days th.next', '[aria-label="next month"]',
-                    'th:has-text("›")', 'th:has-text(">")']:
-            try:
-                await page.click(sel, timeout=1500)
-                await page.wait_for_timeout(800)
-                clicked_next = True
-                print(f"  Clicked next month (attempt {attempt})")
-                break
-            except: continue
+    await page.screenshot(path="debug_05b_correct_month.png", full_page=True)
 
-        if not clicked_next:
-            print(f"  No next arrow found on attempt {attempt}")
-            break
+    # Step 3c: Click the target day number in the calendar
+    print(f"  Clicking day {target_day} in calendar...")
+    try:
+        # Calendar days are in <td> elements — click the one matching our day
+        # Use text matching but exclude header cells (SUN, MON etc)
+        await page.locator(
+            f'td:has-text("{target_day}")'
+        ).filter(has_not_text="SUN").filter(has_not_text="MON").first.click(timeout=3000)
+        print(f"  Clicked day {target_day}!")
+    except:
+        # JS fallback: find td with exactly our day number
+        clicked = await page.evaluate(f"""
+            () => {{
+                const cells = document.querySelectorAll('td');
+                for (const cell of cells) {{
+                    if (cell.textContent.trim() === '{target_day}' &&
+                        !cell.classList.contains('disabled') &&
+                        !cell.classList.contains('old') &&
+                        cell.tagName === 'TD') {{
+                        cell.click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+        """)
+        if clicked:
+            print(f"  Clicked day {target_day} via JS!")
+        else:
+            print(f"  WARNING: Could not click day {target_day}")
 
-    await page.screenshot(path="debug_06_date_final.png", full_page=True)
+    await page.wait_for_load_state("domcontentloaded")
+    await page.wait_for_timeout(3000)
+    await page.screenshot(path="debug_06_date_selected.png", full_page=True)
+    print(f"  Date selected — tee times should now show for {target_dt.strftime('%A %d %B')}")
 
 
 async def select_time_and_book(page, target_time: str) -> bool:
-    print(f"\nStep 4: Finding {target_time} slot...")
+    print(f"\nStep 4: Finding {target_time} BOOK NOW...")
     await page.wait_for_timeout(2000)
     await page.screenshot(path="debug_07_tee_times.png", full_page=True)
 
@@ -162,11 +183,11 @@ async def select_time_and_book(page, target_time: str) -> bool:
     if target_time in content:
         print(f"  '{target_time}' found on page!")
     else:
-        print(f"  '{target_time}' NOT found — checking visible times...")
+        print(f"  '{target_time}' NOT found — visible times:")
         times = await page.locator('text=/\\d{2}:\\d{2}/').all_text_contents()
-        print(f"  Visible times: {times[:20]}")
+        print(f"  {times[:20]}")
 
-    # Method 1: row with time + BOOK NOW
+    # Method 1: row with time + BOOK NOW link
     try:
         await page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first.click(timeout=5000)
         print(f"  Clicked BOOK NOW at {target_time}!")
@@ -204,10 +225,10 @@ async def select_time_and_book(page, target_time: str) -> bool:
     try:
         buttons = page.locator('a:has-text("BOOK NOW"), button:has-text("BOOK NOW")')
         count = await buttons.count()
-        print(f"  Found {count} BOOK NOW buttons")
+        print(f"  Found {count} BOOK NOW buttons total")
         if count > 0:
             await buttons.first.click()
-            print("  Clicked first BOOK NOW")
+            print("  Clicked first BOOK NOW as fallback")
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
             await page.screenshot(path="debug_08_fallback.png", full_page=True)
@@ -278,15 +299,15 @@ async def main():
         browser = await p.chromium.launch(headless=True)
         page    = await browser.new_page(viewport={"width": 1280, "height": 900})
 
-        await login(page)              # Always continues
-        await go_to_tee_sheet(page)    # Goes directly to URL
+        await login(page)
+        await go_to_tee_sheet(page)
         await select_date(page, target_dt)
         success = await select_time_and_book(page, TEST_TIME)
 
         if success:
             await fill_players_and_confirm(page, players)
         else:
-            print("\nCould not click a slot — check debug_07_tee_times.png")
+            print("\nCould not find time slot — check debug_07_tee_times.png")
 
         await browser.close()
 
