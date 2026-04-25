@@ -57,7 +57,7 @@ async def login(page):
     await page.fill('input[type="password"]', BRS_PASSWORD)
     await page.screenshot(path="debug_02_credentials_filled.png")
     await page.click('button:has-text("LOGIN")')
-    await page.wait_for_load_state("networkidle")
+    await page.wait_for_load_state("domcontentloaded")
     await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_03_after_login.png")
     print(f"  After login URL: {page.url}")
@@ -90,7 +90,7 @@ async def select_date(page, target_dt: datetime):
             # Try data-date attribute
             try:
                 await page.click(f'[data-date="{date_str}"]', timeout=3000)
-                await page.wait_for_load_state("networkidle")
+                await page.wait_for_load_state("domcontentloaded")
                 await page.wait_for_timeout(2000)
                 await page.screenshot(path="debug_06_date_selected.png", full_page=True)
                 print(f"  Date selected via data-date!")
@@ -103,7 +103,7 @@ async def select_date(page, target_dt: datetime):
                     f'td:has-text("{target_day}"):not(.disabled):not(.old):not(.new)',
                     timeout=3000
                 )
-                await page.wait_for_load_state("networkidle")
+                await page.wait_for_load_state("domcontentloaded")
                 await page.wait_for_timeout(2000)
                 await page.screenshot(path="debug_06_date_selected.png", full_page=True)
                 print(f"  Date selected via td!")
@@ -170,7 +170,7 @@ async def select_time_and_book(page, target_time: str) -> bool:
     try:
         await page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first.click(timeout=5000)
         print(f"  Clicked BOOK NOW at {target_time}!")
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("domcontentloaded")
         await page.wait_for_timeout(2000)
         await page.screenshot(path="debug_08_after_book_now.png", full_page=True)
         return True
@@ -193,7 +193,7 @@ async def select_time_and_book(page, target_time: str) -> bool:
         """)
         if clicked:
             print("  Method 2: JS clicked!")
-            await page.wait_for_load_state("networkidle")
+            await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
             await page.screenshot(path="debug_08_js_click.png", full_page=True)
             return True
@@ -208,7 +208,7 @@ async def select_time_and_book(page, target_time: str) -> bool:
         if count > 0:
             await buttons.first.click()
             print("  Clicked first BOOK NOW")
-            await page.wait_for_load_state("networkidle")
+            await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
             await page.screenshot(path="debug_08_fallback.png", full_page=True)
             return True
@@ -252,7 +252,7 @@ async def fill_players_and_confirm(page, players: list) -> bool:
                 'button:has-text("Confirm")', 'button[type="submit"]']:
         try:
             await page.click(sel, timeout=3000)
-            await page.wait_for_load_state("networkidle")
+            await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(3000)
             await page.screenshot(path="confirmation_test.png", full_page=True)
             print("  BOOKING COMPLETE!")
