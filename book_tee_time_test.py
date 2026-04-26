@@ -1,12 +1,6 @@
 """
 TeeBot TEST SCRIPT - Beaverstown Golf Club BRS
-Flow:
-1. Login
-2. Go to tee sheet URL
-3. Click the date button (SAT 25TH APR) to open calendar popup
-4. Click target day number in calendar
-5. Click BOOK NOW at target time
-6. Add players and confirm
+Working flow - now with full 4-player autocomplete search
 """
 
 import asyncio, os, json, urllib.request
@@ -63,7 +57,6 @@ async def login(page):
     await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_03_after_login.png")
     print(f"  URL after login: {page.url}")
-    print("  Continuing...")
 
 
 async def go_to_tee_sheet(page):
@@ -71,107 +64,68 @@ async def go_to_tee_sheet(page):
     await page.goto(TEE_SHEET_URL, wait_until="networkidle")
     await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_04_tee_sheet.png", full_page=True)
-    print(f"  URL: {page.url}")
 
 
 async def select_date(page, target_dt: datetime):
-    """Click the date button to open calendar popup, then click the target day."""
     print(f"\nStep 3: Selecting {target_dt.strftime('%A %d %B %Y')}...")
-    target_day   = target_dt.day        # e.g. 29
-    target_month = MONTH_NAMES[target_dt.month - 1]  # e.g. "April"
-    target_year  = str(target_dt.year)  # e.g. "2026"
+    target_day   = target_dt.day
+    target_month = MONTH_NAMES[target_dt.month - 1]
+    target_year  = str(target_dt.year)
 
-    # Step 3a: Click the date button at the top to open the calendar
-    print("  Clicking date button to open calendar...")
-    try:
-        # The date button shows e.g. "SAT 25TH APR" with a calendar icon
-        await page.click(
-            'button:has-text("APR"), button:has-text("MAY"), button:has-text("JUN"), '
-            'button:has-text("JUL"), button:has-text("AUG"), button:has-text("SEP"), '
-            'a:has-text("APR"), a:has-text("MAY"), '
-            '.date-picker-toggle, [class*="date-btn"], [class*="datepicker-toggle"]',
-            timeout=5000
-        )
-        print("  Opened calendar via button")
-    except:
-        # Try clicking the calendar icon area at top of page
-        try:
-            await page.click('.fa-calendar, .glyphicon-calendar, [class*="calendar-icon"]', timeout=3000)
-            print("  Opened calendar via icon")
-        except:
-            # JS: find and click whatever contains the current date text
-            clicked = await page.evaluate("""
-                () => {
-                    const btns = document.querySelectorAll('button, a, div, span');
-                    for (const btn of btns) {
-                        const text = btn.textContent.trim().toUpperCase();
-                        const months = ['JAN','FEB','MAR','APR','MAY','JUN',
-                                       'JUL','AUG','SEP','OCT','NOV','DEC'];
-                        if (months.some(m => text.includes(m)) && text.length < 30) {
-                            btn.click();
-                            return text;
-                        }
-                    }
-                    return null;
+    # Click the date button to open calendar
+    print("  Opening calendar...")
+    clicked = await page.evaluate("""
+        () => {
+            const btns = document.querySelectorAll('button, a, div, span');
+            for (const btn of btns) {
+                const text = btn.textContent.trim().toUpperCase();
+                const months = ['JAN','FEB','MAR','APR','MAY','JUN',
+                               'JUL','AUG','SEP','OCT','NOV','DEC'];
+                if (months.some(m => text.includes(m)) && text.length < 30) {
+                    btn.click();
+                    return text;
                 }
-            """)
-            print(f"  Calendar opened via JS: {clicked}")
-
+            }
+            return null;
+        }
+    """)
+    print(f"  Calendar opened: {clicked}")
     await page.wait_for_timeout(1500)
     await page.screenshot(path="debug_05_calendar_open.png", full_page=True)
 
-    # Step 3b: Navigate to correct month if needed
+    # Navigate to correct month if needed
     for attempt in range(4):
         content = await page.content()
         if target_month in content and target_year in content:
-            print(f"  Correct month showing: {target_month} {target_year}")
+            print(f"  Correct month: {target_month} {target_year}")
             break
-        # Click next month arrow (>) in the calendar popup
         try:
-            await page.click('th.next, .datepicker th.next, [aria-label="next month"]', timeout=2000)
+            await page.click('th.next, .datepicker th.next', timeout=2000)
             await page.wait_for_timeout(800)
-            print(f"  Navigated to next month (attempt {attempt})")
         except:
-            print(f"  Could not navigate month on attempt {attempt}")
             break
 
-    await page.screenshot(path="debug_05b_correct_month.png", full_page=True)
-
-    # Step 3c: Click the target day number in the calendar
-    print(f"  Clicking day {target_day} in calendar...")
-    try:
-        # Calendar days are in <td> elements — click the one matching our day
-        # Use text matching but exclude header cells (SUN, MON etc)
-        await page.locator(
-            f'td:has-text("{target_day}")'
-        ).filter(has_not_text="SUN").filter(has_not_text="MON").first.click(timeout=3000)
-        print(f"  Clicked day {target_day}!")
-    except:
-        # JS fallback: find td with exactly our day number
-        clicked = await page.evaluate(f"""
-            () => {{
-                const cells = document.querySelectorAll('td');
-                for (const cell of cells) {{
-                    if (cell.textContent.trim() === '{target_day}' &&
-                        !cell.classList.contains('disabled') &&
-                        !cell.classList.contains('old') &&
-                        cell.tagName === 'TD') {{
-                        cell.click();
-                        return true;
-                    }}
+    # Click the target day number
+    print(f"  Clicking day {target_day}...")
+    clicked = await page.evaluate(f"""
+        () => {{
+            const cells = document.querySelectorAll('td');
+            for (const cell of cells) {{
+                if (cell.textContent.trim() === '{target_day}' &&
+                    !cell.classList.contains('disabled') &&
+                    !cell.classList.contains('old') &&
+                    !cell.classList.contains('new')) {{
+                    cell.click();
+                    return true;
                 }}
-                return false;
             }}
-        """)
-        if clicked:
-            print(f"  Clicked day {target_day} via JS!")
-        else:
-            print(f"  WARNING: Could not click day {target_day}")
-
+            return false;
+        }}
+    """)
+    print(f"  Day clicked: {clicked}")
     await page.wait_for_load_state("domcontentloaded")
     await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_06_date_selected.png", full_page=True)
-    print(f"  Date selected — tee times should now show for {target_dt.strftime('%A %d %B')}")
 
 
 async def select_time_and_book(page, target_time: str) -> bool:
@@ -181,13 +135,12 @@ async def select_time_and_book(page, target_time: str) -> bool:
 
     content = await page.content()
     if target_time in content:
-        print(f"  '{target_time}' found on page!")
+        print(f"  '{target_time}' found!")
     else:
-        print(f"  '{target_time}' NOT found — visible times:")
         times = await page.locator('text=/\\d{2}:\\d{2}/').all_text_contents()
-        print(f"  {times[:20]}")
+        print(f"  '{target_time}' not found. Visible: {times[:10]}")
 
-    # Method 1: row with time + BOOK NOW link
+    # Method 1: row with time + BOOK NOW
     try:
         await page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first.click(timeout=5000)
         print(f"  Clicked BOOK NOW at {target_time}!")
@@ -213,7 +166,7 @@ async def select_time_and_book(page, target_time: str) -> bool:
             }}
         """)
         if clicked:
-            print("  Method 2: JS clicked!")
+            print("  Method 2 worked!")
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
             await page.screenshot(path="debug_08_js_click.png", full_page=True)
@@ -221,14 +174,13 @@ async def select_time_and_book(page, target_time: str) -> bool:
     except Exception as e:
         print(f"  Method 2 failed: {e}")
 
-    # Method 3: first BOOK NOW on page
+    # Method 3: first BOOK NOW
     try:
         buttons = page.locator('a:has-text("BOOK NOW"), button:has-text("BOOK NOW")')
         count = await buttons.count()
-        print(f"  Found {count} BOOK NOW buttons total")
+        print(f"  Found {count} BOOK NOW buttons")
         if count > 0:
             await buttons.first.click()
-            print("  Clicked first BOOK NOW as fallback")
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
             await page.screenshot(path="debug_08_fallback.png", full_page=True)
@@ -240,47 +192,128 @@ async def select_time_and_book(page, target_time: str) -> bool:
     return False
 
 
+async def add_player(page, slot_num: int, player_name: str) -> bool:
+    """
+    Type player name into the slot input, wait for autocomplete dropdown,
+    then click the matching result.
+    BRS format: "Kirwan, Rory" — search by surname first.
+    """
+    surname   = player_name.split(",")[0].strip()   # e.g. "Kirwan"
+    firstname = player_name.split(",")[1].strip() if "," in player_name else player_name
+
+    print(f"  Adding player {slot_num}: {player_name} (searching '{surname}')")
+
+    # Get all player input fields on the page
+    inputs = page.locator('input[placeholder*="typing"], input[placeholder*="player"], input[placeholder*="find"]')
+    count  = await inputs.count()
+    print(f"  Found {count} player input fields")
+
+    if count == 0:
+        # Try any visible text input that isn't username/password
+        inputs = page.locator('input[type="text"]:visible')
+        count  = await inputs.count()
+        print(f"  Found {count} visible text inputs as fallback")
+
+    if slot_num > count:
+        print(f"  Not enough inputs for slot {slot_num}")
+        return False
+
+    target_input = inputs.nth(slot_num - 1)
+
+    # Clear and type surname
+    await target_input.click()
+    await target_input.fill("")
+    await page.wait_for_timeout(300)
+    await target_input.type(surname, delay=80)  # Type slowly to trigger autocomplete
+    await page.wait_for_timeout(2000)  # Wait for dropdown to appear
+
+    await page.screenshot(path=f"debug_player_{slot_num}_typing.png", full_page=True)
+
+    # Look for autocomplete dropdown results
+    dropdown_selectors = [
+        f'li:has-text("{surname}")',
+        f'li:has-text("{firstname}")',
+        f'.autocomplete-result:has-text("{surname}")',
+        f'[role="option"]:has-text("{surname}")',
+        f'.dropdown-item:has-text("{surname}")',
+        f'ul li:has-text("{surname}")',
+        f'.tt-suggestion:has-text("{surname}")',
+        f'.ui-autocomplete li:has-text("{surname}")',
+    ]
+
+    for sel in dropdown_selectors:
+        try:
+            await page.click(sel, timeout=3000)
+            print(f"  Selected '{player_name}' from dropdown!")
+            await page.wait_for_timeout(500)
+            return True
+        except:
+            continue
+
+    # If no dropdown found, try pressing Enter or Tab
+    try:
+        await target_input.press("Enter")
+        await page.wait_for_timeout(500)
+        print(f"  Pressed Enter for {player_name}")
+        return True
+    except:
+        pass
+
+    print(f"  Could not select {player_name} from dropdown")
+    return False
+
+
 async def fill_players_and_confirm(page, players: list) -> bool:
-    print(f"\nStep 5: Adding players...")
+    print(f"\nStep 5: Adding 4 players to booking form...")
     await page.screenshot(path="debug_09_booking_form.png", full_page=True)
     await page.wait_for_timeout(1000)
 
-    for i, player in enumerate(players):
-        slot_num   = i + 1
-        first_name = player.split(",")[1].strip() if "," in player else player
-        print(f"  Player {slot_num}: {player}")
-        for sel in [f'select:nth-of-type({slot_num})', f'#player{slot_num}']:
-            try:
-                await page.select_option(sel, label=player, timeout=2000)
-                break
-            except: continue
-        for sel in [
-            f'input[placeholder*="buddy"]:nth-of-type({slot_num})',
-            f'input[placeholder*="player"]:nth-of-type({slot_num})',
-            f'input[placeholder*="member"]:nth-of-type({slot_num})',
-        ]:
-            try:
-                await page.fill(sel, first_name, timeout=2000)
-                await page.wait_for_timeout(800)
-                await page.click('li[role="option"]:first-child, .autocomplete-suggestion:first-child', timeout=2000)
-                break
-            except: continue
+    # Player 1 is already filled with the logged-in member (Kirwan, Rory)
+    # We need to fill players 2, 3, 4
+    # Check if player 1 is already filled
+    content = await page.content()
+    player1_filled = "Kirwan, Rory" in content or "Kirwan,Rory" in content
+
+    if player1_filled:
+        print("  Player 1 (Kirwan, Rory) already filled by BRS ✅")
+        # Fill players 2, 3, 4 — use players[1], [2], [3] from our list
+        players_to_add = players[1:4]  # Skip Rory, add the other 3
+        start_slot = 2
+    else:
+        players_to_add = players      # Fill all 4
+        start_slot = 1
+
+    for i, player in enumerate(players_to_add):
+        slot = start_slot + i
+        success = await add_player(page, slot, player)
+        await page.wait_for_timeout(800)
+        await page.screenshot(path=f"debug_player_{slot}_added.png", full_page=True)
 
     await page.wait_for_timeout(1000)
-    await page.screenshot(path="debug_10_players_added.png", full_page=True)
+    await page.screenshot(path="debug_10_all_players.png", full_page=True)
 
-    for sel in ['button:has-text("Create Booking")', 'a:has-text("Create Booking")',
-                'button:has-text("Confirm")', 'button[type="submit"]']:
+    # Click CREATE BOOKING
+    print("\n  Clicking CREATE BOOKING...")
+    for sel in [
+        'button:has-text("Create Booking")',
+        'a:has-text("Create Booking")',
+        'button:has-text("CREATE BOOKING")',
+        '.btn:has-text("Create")',
+        'input[value="Create Booking"]',
+        'button[type="submit"]',
+    ]:
         try:
             await page.click(sel, timeout=3000)
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(3000)
             await page.screenshot(path="confirmation_test.png", full_page=True)
-            print("  BOOKING COMPLETE!")
+            print("  ✅ BOOKING COMPLETE!")
             return True
-        except: continue
+        except:
+            continue
 
     await page.screenshot(path="debug_11_no_confirm.png", full_page=True)
+    print("  Could not find Create Booking button")
     return False
 
 
