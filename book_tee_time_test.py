@@ -68,50 +68,65 @@ async def go_to_tee_sheet(page):
 
 async def select_date(page, target_dt: datetime):
     print(f"\nStep 3: Selecting {target_dt.strftime('%A %d %B %Y')}...")
-    target_day   = target_dt.day
+    target_day   = str(target_dt.day)   # string e.g. "28"
     target_month = MONTH_NAMES[target_dt.month - 1]
     target_year  = str(target_dt.year)
 
-    # Click the date button to open calendar
-    print("  Opening calendar...")
-    clicked = await page.evaluate("""
-        () => {
-            const btns = document.querySelectorAll('button, a, div, span');
-            for (const btn of btns) {
-                const text = btn.textContent.trim().toUpperCase();
+    # Step 1: Click the date button at top of tee sheet to open calendar
+    print("  Opening calendar by clicking date button...")
+    try:
+        # The date button is a <button> containing the current date e.g. "SUN 27TH APR"
+        await page.click('button.btn-date, button[class*="date"], .date-picker button', timeout=3000)
+        print("  Opened via .btn-date")
+    except:
+        # JS fallback — find button/element containing a month abbreviation
+        clicked = await page.evaluate("""
+            () => {
                 const months = ['JAN','FEB','MAR','APR','MAY','JUN',
                                'JUL','AUG','SEP','OCT','NOV','DEC'];
-                if (months.some(m => text.includes(m)) && text.length < 30) {
-                    btn.click();
-                    return text;
+                // Look specifically in the header area
+                const header = document.querySelector('header, nav, .header, .tee-sheet-header, .top-bar');
+                const searchIn = header || document;
+                const btns = searchIn.querySelectorAll('button, a');
+                for (const btn of btns) {
+                    const text = btn.textContent.trim().toUpperCase();
+                    if (months.some(m => text.includes(m)) && text.length < 40) {
+                        btn.click();
+                        return text;
+                    }
                 }
+                return null;
             }
-            return null;
-        }
-    """)
-    print(f"  Calendar opened: {clicked}")
-    await page.wait_for_timeout(1500)
+        """)
+        print(f"  Opened via JS: {clicked}")
+
+    await page.wait_for_timeout(2000)
     await page.screenshot(path="debug_05_calendar_open.png", full_page=True)
 
-    # Navigate to correct month if needed
+    # Step 2: Navigate to correct month if needed
     for attempt in range(4):
-        content = await page.content()
-        if target_month in content and target_year in content:
-            print(f"  Correct month: {target_month} {target_year}")
+        page_content = await page.content()
+        if target_month in page_content and target_year in page_content:
+            print(f"  Correct month visible: {target_month} {target_year}")
             break
         try:
-            await page.click('th.next, .datepicker th.next', timeout=2000)
+            await page.click('th.next, .datepicker th.next, [aria-label="next month"]', timeout=2000)
             await page.wait_for_timeout(800)
+            print(f"  Clicked next month")
         except:
+            print(f"  Could not navigate month")
             break
 
-    # Click the target day number
+    await page.screenshot(path="debug_05b_month.png", full_page=True)
+
+    # Step 3: Click the target day — compare as string to avoid type mismatch
     print(f"  Clicking day {target_day}...")
     clicked = await page.evaluate(f"""
         () => {{
             const cells = document.querySelectorAll('td');
             for (const cell of cells) {{
-                if (cell.textContent.trim() === '{target_day}' &&
+                const txt = cell.textContent.trim();
+                if (txt === '{target_day}' &&
                     !cell.classList.contains('disabled') &&
                     !cell.classList.contains('old') &&
                     !cell.classList.contains('new')) {{
@@ -119,13 +134,22 @@ async def select_date(page, target_dt: datetime):
                     return true;
                 }}
             }}
+            // Also try any element with just that number
+            const all = document.querySelectorAll('td, span, div');
+            for (const el of all) {{
+                if (el.textContent.trim() === '{target_day}' && el.tagName !== 'SPAN') {{
+                    el.click();
+                    return 'fallback';
+                }}
+            }}
             return false;
         }}
     """)
-    print(f"  Day clicked: {clicked}")
+    print(f"  Day {target_day} click result: {clicked}")
     await page.wait_for_load_state("domcontentloaded")
     await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_06_date_selected.png", full_page=True)
+    print(f"  Tee sheet should now show {target_dt.strftime('%A %d %B')}")
 
 
 async def select_time_and_book(page, target_time: str) -> bool:
