@@ -60,8 +60,8 @@ async def login(page):
 
 async def go_to_date(page, target_dt: datetime):
     """Navigate directly to the tee sheet URL for the target date."""
-    date_str = target_dt.strftime("%Y-%m-%d")
-    url = f"{TEE_SHEET_BASE}?date={date_str}"
+    date_str = target_dt.strftime("%Y/%m/%d")
+    url = f"{TEE_SHEET_BASE}/{date_str}"
     print(f"\nStep 2: Going directly to {target_dt.strftime('%A %d %B')} tee sheet...")
     print(f"  URL: {url}")
     await page.goto(url, wait_until="domcontentloaded")
