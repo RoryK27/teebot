@@ -46,7 +46,7 @@ def get_next_date_for_dow(dow: int) -> datetime:
 
 async def login(page):
     print("Step 1: Logging in...")
-    await page.goto(BRS_LOGIN_URL, wait_until="networkidle")
+    await page.goto(BRS_LOGIN_URL, wait_until="domcontentloaded")
     await page.wait_for_timeout(2000)
     await page.screenshot(path="debug_01_landing.png")
     await page.fill('input[name="username"], input[type="text"]', BRS_EMAIL)
@@ -61,7 +61,7 @@ async def login(page):
 
 async def go_to_tee_sheet(page):
     print("\nStep 2: Navigating to tee sheet...")
-    await page.goto(TEE_SHEET_URL, wait_until="networkidle")
+    await page.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
     await page.wait_for_timeout(3000)
     await page.screenshot(path="debug_04_tee_sheet.png", full_page=True)
 
