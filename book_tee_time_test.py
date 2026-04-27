@@ -18,7 +18,7 @@ REPO           = os.environ.get("GITHUB_REPOSITORY", "")
 DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
 
 TEST_DAY_OF_WEEK = 1       # 1 = Tuesday
-TEST_TIME        = "18:00"
+TEST_TIME        = "18:10"
 
 
 def load_players():
@@ -144,54 +144,69 @@ async def select_time_and_book(page, target_time: str) -> bool:
 
 
 async def add_player(page, slot_num: int, player_name: str) -> bool:
-    """Type player surname into slot input and select from autocomplete."""
-    surname   = player_name.split(",")[0].strip()
-    firstname = player_name.split(",")[1].strip() if "," in player_name else player_name
+    """
+    BRS player slot uses a text input that when clicked shows a custom dropdown
+    with buddies list. Click the input for the slot, wait for dropdown, then
+    click the matching name in the list.
+    """
     print(f"  Adding player {slot_num}: {player_name}")
 
-    # Get all player search inputs
-    inputs = page.locator('input[placeholder*="typing"], input[placeholder*="player"], input[placeholder*="find"]')
+    # All player inputs have placeholder "Start typing to find player..."
+    inputs = page.locator('input[placeholder*="typing"], input[placeholder*="find player"]')
     count  = await inputs.count()
+    print(f"  Found {count} player input fields")
 
-    if count == 0:
-        inputs = page.locator('input[type="text"]:visible')
-        count  = await inputs.count()
-
-    if slot_num > count:
-        print(f"  ⚠️ Only {count} inputs found for slot {slot_num}")
+    # slot_num 2 = index 0, slot_num 3 = index 1, slot_num 4 = index 2
+    input_index = slot_num - 2
+    if input_index >= count:
+        print(f"  ⚠️ Not enough inputs ({count}) for slot {slot_num}")
         return False
 
-    target_input = inputs.nth(slot_num - 1)
+    target_input = inputs.nth(input_index)
+
+    # Step 1: Click the input to open the dropdown
     await target_input.click()
-    await target_input.fill("")
-    await page.wait_for_timeout(300)
-    await target_input.type(surname, delay=80)
-    await page.wait_for_timeout(2000)
+    await page.wait_for_timeout(1500)
     await page.screenshot(path=f"debug_player_{slot_num}_typing.png", full_page=True)
 
-    # Try clicking autocomplete result
+    # Step 2: Click the player name in the dropdown list
+    # The dropdown shows names as plain text items — click exact match first
     for sel in [
-        f'li:has-text("{surname}")',
-        f'li:has-text("{firstname}")',
-        f'[role="option"]:has-text("{surname}")',
-        f'.autocomplete-result:has-text("{surname}")',
-        f'.tt-suggestion:has-text("{surname}")',
-        f'ul li:has-text("{surname}")',
-        f'.dropdown-item:has-text("{surname}")',
+        f'li:has-text("{player_name}")',
+        f'div:has-text("{player_name}")',
+        f'span:has-text("{player_name}")',
+        f'[role="option"]:has-text("{player_name}")',
     ]:
         try:
-            await page.click(sel, timeout=3000)
-            print(f"  ✅ Selected {player_name}")
-            await page.wait_for_timeout(500)
+            # Use exact text match to avoid partial matches
+            item = page.locator(sel).filter(has_text=player_name).first
+            await item.click(timeout=3000)
+            print(f"  ✅ Clicked '{player_name}' in dropdown")
+            await page.wait_for_timeout(800)
             return True
         except:
             continue
 
-    # Press Enter as last resort
-    await target_input.press("Enter")
-    await page.wait_for_timeout(500)
-    print(f"  ↩️ Pressed Enter for {player_name}")
-    return True
+    # Fallback: JS click on any element containing exact player name in dropdown
+    clicked = await page.evaluate(f"""
+        () => {{
+            const all = document.querySelectorAll('li, div, span, a');
+            for (const el of all) {{
+                if (el.textContent.trim() === '{player_name}') {{
+                    el.click();
+                    return true;
+                }}
+            }}
+            return false;
+        }}
+    """)
+    if clicked:
+        print(f"  ✅ JS clicked '{player_name}'")
+        await page.wait_for_timeout(800)
+        return True
+
+    print(f"  ⚠️ Could not find '{player_name}' in dropdown")
+    return False
 
 
 async def fill_players_and_confirm(page, players: list) -> bool:
@@ -199,16 +214,11 @@ async def fill_players_and_confirm(page, players: list) -> bool:
     await page.screenshot(path="debug_07_booking_form.png", full_page=True)
     await page.wait_for_timeout(1000)
 
-    # Player 1 (Kirwan, Rory) is pre-filled by BRS — fill slots 2, 3, 4
-    content = await page.content()
-    player1_filled = "Kirwan, Rory" in content or "Rory" in content
-    if player1_filled:
-        print("  ✅ Player 1 (Kirwan, Rory) already filled by BRS")
-        players_to_add = players[1:4]
-        start_slot = 2
-    else:
-        players_to_add = players
-        start_slot = 1
+    # BRS always pre-fills Player 1 with the logged-in member
+    # So we always fill slots 2, 3, 4 with the remaining players
+    print("  ✅ Player 1 (Kirwan, Rory) pre-filled by BRS")
+    players_to_add = players[1:4]  # Lisa, Paul, Ronan
+    start_slot = 2
 
     for i, player in enumerate(players_to_add):
         slot = start_slot + i
