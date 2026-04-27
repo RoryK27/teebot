@@ -1,0 +1,18 @@
+{
+  "players": [
+    "Kirwan, Rory",
+    "Kirwan, Lisa",
+    "Carrick, Paul",
+    "Hennelly, Ronan"
+  ],
+  "bookings": [
+    {
+      "label": "Saturday Morning",
+      "day_of_week": 5,
+      "preferred_times": ["08:20", "08:30", "08:40", "08:50", "09:00", "09:10", "09:20"],
+      "players": 4
+    }
+  ],
+  "updated": "2026-04-26T00:00:00Z",
+  "club_url": "https://members.brsgolf.com/beaverstown/tee-sheet/1"
+}

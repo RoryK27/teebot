@@ -1,0 +1,46 @@
+name: TeeBot - Book Tee Times
+
+on:
+  schedule:
+    # 8:28 PM BST (summer, UTC+1) = 19:28 UTC
+    # Bot logs in at 8:28, waits on the page, fires the instant 8:30 hits
+    - cron: '28 19 * * 1'
+  workflow_dispatch:
+
+jobs:
+  book-tee-time:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run TeeBot
+        env:
+          BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
+          BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python book_tee_time.py
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-confirmations
+          path: |
+            confirmation*.png
+            error*.png
+          retention-days: 14
