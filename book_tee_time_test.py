@@ -18,7 +18,7 @@ REPO           = os.environ.get("GITHUB_REPOSITORY", "")
 DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
 
 TEST_DAY_OF_WEEK = 1       # 1 = Tuesday
-TEST_TIME        = "18:10"
+TEST_TIME        = "18:40"
 
 
 def load_players():
