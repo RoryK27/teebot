@@ -17,8 +17,11 @@ REPO           = os.environ.get("GITHUB_REPOSITORY", "")
 
 DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
 
-TEST_DAY_OF_WEEK = 1       # 1 = Tuesday
-TEST_TIME        = "18:40"
+# Use "Guest" as a player name for an anonymous guest slot, e.g.:
+#   ["Kirwan, Rory", "Guest", "Guest", "Guest"]
+
+TEST_DAY_OF_WEEK = 2       # 0=Mon 1=Tue 2=Wed 3=Thu 4=Fri 5=Sat 6=Sun
+TEST_TIME        = "19:10"
 
 
 def load_players():
@@ -144,106 +147,115 @@ async def select_time_and_book(page, target_time: str) -> bool:
 
 async def add_player(page, slot_num: int, player_name: str) -> bool:
     """
-    Type the player's surname into the BRS autocomplete input,
-    wait for the AJAX dropdown, then click the matching result.
-    Includes diagnostic HTML dump so the dropdown structure is
-    visible in GitHub Actions logs on failure.
+    BRS booking form flow (confirmed from mobile screenshots):
+      - Each player slot has a greyed display field (placeholder 'Start typing to find player...')
+      - Clicking it opens a dropdown showing all buddies immediately
+      - A search input below it gains keyboard focus
+      - For named players: type surname into the focused input → list filters → click match
+      - For "Guest": Guest is already visible under General — no typing needed, just click it
     """
     print(f"  Adding player {slot_num}: {player_name}")
+    is_guest = player_name.strip().lower() == "guest"
+    surname = player_name.split(",")[0].strip() if not is_guest else "Guest"
 
-    inputs = page.locator('input[placeholder*="typing"], input[placeholder*="find player"]')
-    count = await inputs.count()
-    print(f"  Found {count} player input fields")
+    # Step 1: Click the display field to open the dropdown
+    display_inputs = page.locator('input[placeholder="Start typing to find player..."]')
+    display_count = await display_inputs.count()
+    print(f"  Found {display_count} display fields")
 
-    input_index = slot_num - 2
-    if input_index >= count:
-        print(f"  ⚠️ Not enough inputs ({count}) for slot {slot_num}")
+    display_index = slot_num - 2   # slot 2 → index 0, slot 3 → index 1, slot 4 → index 2
+    if display_index >= display_count:
+        print(f"  ⚠️ Not enough display fields ({display_count}) for slot {slot_num}")
         return False
 
-    target_input = inputs.nth(input_index)
-    surname = player_name.split(",")[0].strip()  # e.g. "Kirwan" from "Kirwan, Rory"
+    await display_inputs.nth(display_index).click()
+    await page.wait_for_timeout(800)
+    await page.screenshot(path=f"debug_player_{slot_num}_clicked.png", full_page=True)
 
-    # Click, clear, then type surname to trigger the autocomplete AJAX call
-    await target_input.click()
-    await page.wait_for_timeout(400)
-    await target_input.fill("")
-    await target_input.type(surname, delay=100)  # human-like typing speed
-    await page.wait_for_timeout(2000)            # wait for AJAX response
-    await page.screenshot(path=f"debug_player_{slot_num}_typed.png", full_page=True)
+    # Step 2: Type surname into the focused search input to filter the list
+    # Skip typing for Guest — already visible in the open dropdown
+    if not is_guest:
+        await page.keyboard.type(surname, delay=80)
+        await page.wait_for_timeout(2000)
+        await page.screenshot(path=f"debug_player_{slot_num}_typed.png", full_page=True)
 
-    # Dump visible dropdown HTML to logs for diagnosis
-    dropdown_html = await page.evaluate("""
-        () => {
-            const sel = 'ul, [class*="dropdown"], [class*="autocomplete"], [class*="suggest"], [class*="result"]';
-            return [...document.querySelectorAll(sel)]
+    # Log all visible li text for diagnosis in Actions logs
+    visible_items = await page.evaluate("""
+        () => [...document.querySelectorAll('li')]
                 .filter(el => el.offsetParent !== null)
-                .map(el => el.outerHTML)
-                .join('\\n---\\n');
-        }
+                .map(el => el.textContent.trim())
+                .filter(t => t.length > 0)
+                .join(' | ')
     """)
-    print(f"  Visible dropdowns after typing:\n{dropdown_html[:2000]}")
+    print(f"  Visible li items: {visible_items[:500]}")
 
-    # Try every plausible selector for the dropdown items
-    for sel in [
-        f'ul li:has-text("{player_name}")',
-        f'ul li:has-text("{surname}")',
-        f'[class*="dropdown"] li:has-text("{surname}")',
-        f'[class*="autocomplete"] li:has-text("{surname}")',
-        f'[class*="result"] li:has-text("{surname}")',
-        f'[class*="suggest"] li:has-text("{surname}")',
-        f'[role="option"]:has-text("{surname}")',
-        f'[role="listbox"] [role="option"]:has-text("{surname}")',
-        f'li:has-text("{player_name}")',
-        f'li:has-text("{surname}")',
-    ]:
-        try:
-            item = page.locator(sel).first
-            if await item.count() > 0 and await item.is_visible():
+    # Step 3: Click the matching name — skip category headers
+    SKIP = {"You and your buddies", "Other club members", "General",
+            "Start typing to find player...", ""}
+
+    def is_match(text: str) -> bool:
+        if text in SKIP:
+            return False
+        if is_guest:
+            return text == "Guest"
+        return text == player_name or text.startswith(surname)
+
+    target_sel = 'li:has-text("Guest")' if is_guest else f'li:has-text("{surname}")'
+    try:
+        items = page.locator(target_sel)
+        count = await items.count()
+        for i in range(count):
+            item = items.nth(i)
+            if not await item.is_visible():
+                continue
+            text = (await item.text_content() or "").strip()
+            if is_match(text):
                 await item.click(timeout=3000)
-                await page.wait_for_timeout(600)
-                # Verify the input now has a value — blank means the click didn't register
-                val = await target_input.input_value()
-                if val and len(val) > 2:
-                    print(f"  ✅ Selected '{player_name}' via [{sel}] → input='{val}'")
-                    return True
-                print(f"  ⚠️ Clicked via [{sel}] but input still empty — trying next selector")
-        except Exception:
-            continue
+                await page.wait_for_timeout(800)
+                print(f"  ✅ Selected '{text}' for player {slot_num}")
+                return True
+    except Exception as e:
+        print(f"  Selector attempt failed: {e}")
 
-    # Nuclear JS fallback — find any visible leaf node containing the surname
-    clicked = await page.evaluate(f"""
+    # JS fallback — walk visible li elements, skip headers
+    matched = await page.evaluate(f"""
         () => {{
-            const targets = [...document.querySelectorAll('li, div, span, a, td')];
-            for (const el of targets) {{
-                if (
-                    el.offsetParent !== null &&
-                    el.children.length === 0 &&
-                    el.textContent.trim().includes('{surname}')
-                ) {{
+            const skip = ["You and your buddies", "Other club members", "General",
+                          "Start typing to find player...", ""];
+            const isGuest = {"true" if is_guest else "false"};
+            const surname = "{surname}";
+            const fullName = "{player_name}";
+            for (const el of document.querySelectorAll("li")) {{
+                const text = el.textContent.trim();
+                if (!el.offsetParent || skip.includes(text)) continue;
+                const match = isGuest
+                    ? text === "Guest"
+                    : (text === fullName || text.startsWith(surname));
+                if (match) {{
                     el.click();
-                    return el.textContent.trim();
+                    return text;
                 }}
             }}
             return null;
         }}
     """)
-    if clicked:
-        print(f"  ✅ JS fallback clicked: '{clicked}'")
-        await page.wait_for_timeout(600)
+    if matched:
+        print(f"  ✅ JS fallback selected: '{matched}'")
+        await page.wait_for_timeout(800)
         return True
 
-    print(f"  ❌ Could not select '{player_name}' — check debug_player_{slot_num}_typed.png")
+    print(f"  ❌ Could not select '{player_name}' — check debug_player_{slot_num}_clicked.png")
     return False
 
 
 async def fill_players_and_confirm(page, players: list) -> bool:
     print(f"\nStep 4: Adding players to booking form...")
     await page.screenshot(path="debug_07_booking_form.png", full_page=True)
-    await page.wait_for_timeout(500)  # don't dawdle — 3-minute timer is running
+    await page.wait_for_timeout(500)  # timer is running — don't dawdle
 
     # BRS always pre-fills Player 1 with the logged-in member
-    print("  ✅ Player 1 (Kirwan, Rory) pre-filled by BRS")
-    players_to_add = players[1:4]  # Lisa, Paul, Ronan
+    print(f"  ✅ Player 1 ({players[0]}) pre-filled by BRS")
+    players_to_add = players[1:4]
     start_slot = 2
 
     for i, player in enumerate(players_to_add):
@@ -252,7 +264,7 @@ async def fill_players_and_confirm(page, players: list) -> bool:
         await page.wait_for_timeout(400)
         await page.screenshot(path=f"debug_player_{slot}_added.png", full_page=True)
         if not success:
-            print(f"  ⚠️ Continuing without player {slot} — will book with fewer players")
+            print(f"  ⚠️ Continuing without player {slot}")
 
     await page.wait_for_timeout(800)
     await page.screenshot(path="debug_08_all_players.png", full_page=True)
