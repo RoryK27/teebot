@@ -158,14 +158,42 @@ async def add_player(page, slot_num: int, player_name: str) -> bool:
     is_guest = player_name.strip().lower() == "guest"
     surname = player_name.split(",")[0].strip() if not is_guest else "Guest"
 
-    # Step 1: Click the display field to open the dropdown
-    display_inputs = page.locator('input[placeholder="Start typing to find player..."]')
-    display_count = await display_inputs.count()
-    print(f"  Found {display_count} display fields")
+    # Step 1: Find all player input fields on the booking form.
+    # On desktop BRS the placeholder text differs from mobile, so we try
+    # multiple selectors and take whichever finds inputs.
+    display_inputs = None
+    for sel in [
+        'input[placeholder="Start typing to find player..."]',
+        'input[placeholder*="typing"]',
+        'input[placeholder*="player"]',
+        'input[placeholder*="find"]',
+        # Last resort: any text input that is NOT the username/password field
+        'form input[type="text"]:not([name="username"])',
+        'input[type="text"]',
+    ]:
+        candidate = page.locator(sel)
+        c = await candidate.count()
+        print(f"  Selector '{sel}' → {c} fields")
+        if c > 0:
+            display_inputs = candidate
+            display_count = c
+            break
+
+    if display_inputs is None:
+        # Dump all inputs on page for diagnosis
+        all_inputs = await page.evaluate("""
+            () => [...document.querySelectorAll('input')]
+                .map(el => `type=${el.type} placeholder='${el.placeholder}' name='${el.name}'`)
+                .join('\n')
+        """)
+        print(f"  ❌ No player inputs found. All inputs on page:\n{all_inputs}")
+        return False
+
+    print(f"  Found {display_count} player input fields")
 
     display_index = slot_num - 2   # slot 2 → index 0, slot 3 → index 1, slot 4 → index 2
     if display_index >= display_count:
-        print(f"  ⚠️ Not enough display fields ({display_count}) for slot {slot_num}")
+        print(f"  ⚠️ Not enough inputs ({display_count}) for slot {slot_num}")
         return False
 
     await display_inputs.nth(display_index).click()
