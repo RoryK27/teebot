@@ -39,4 +39,5 @@ jobs:
             confirmation_*.png
             error_*.png
             debug_*.png
+            debug_*.html
           retention-days: 7
