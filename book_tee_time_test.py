@@ -62,7 +62,6 @@ async def login(page):
 
 
 async def go_to_date(page, target_dt: datetime):
-    """Navigate directly to the tee sheet URL for the target date."""
     date_str = target_dt.strftime("%Y/%m/%d")
     url = f"{TEE_SHEET_BASE}/{date_str}"
     print(f"\nStep 2: Going directly to {target_dt.strftime('%A %d %B')} tee sheet...")
@@ -145,175 +144,123 @@ async def select_time_and_book(page, target_time: str) -> bool:
     return False
 
 
-async def add_player(page, slot_num: int, player_name: str) -> bool:
+async def get_player_inputs(page):
     """
-    BRS booking form flow (confirmed from mobile screenshots):
-      - Each player slot has a greyed display field (placeholder 'Start typing to find player...')
-      - Clicking it opens a dropdown showing all buddies immediately
-      - A search input below it gains keyboard focus
-      - For named players: type surname into the focused input → list filters → click match
-      - For "Guest": Guest is already visible under General — no typing needed, just click it
+    Find the player search inputs on the booking form.
+    Logs every input so we can diagnose headless rendering.
+    Returns list of (locator) for slots 2/3/4.
     """
+    all_inputs = await page.locator("input").all()
+    print(f"  Total inputs on page: {len(all_inputs)}")
+
+    player_slots = []
+    for i, inp in enumerate(all_inputs):
+        try:
+            tp  = await inp.get_attribute("type") or "text"
+            nm  = await inp.get_attribute("name") or ""
+            idd = await inp.get_attribute("id") or ""
+            ph  = await inp.get_attribute("placeholder") or ""
+            val = await inp.input_value()
+            vis = await inp.is_visible()
+            dis = await inp.get_attribute("disabled")
+            ro  = await inp.get_attribute("readonly")
+            print(f"    [{i}] type={tp} name={nm!r} id={idd!r} ph={ph!r} val={val!r} vis={vis} dis={dis} ro={ro}")
+
+            if tp in ("hidden", "password", "submit", "button", "checkbox", "radio"):
+                continue
+            if not vis:
+                continue
+            if dis is not None or ro is not None:
+                continue
+            skip_names = ("first_name", "last_name", "email", "phone", "username")
+            if any(x in nm or x in idd for x in skip_names):
+                continue
+            player_slots.append(inp)
+        except Exception as ex:
+            print(f"    [{i}] error: {ex}")
+
+    print(f"  Player slot inputs found: {len(player_slots)}")
+    return player_slots
+
+
+async def add_player(page, slot_num: int, player_name: str, player_inputs: list) -> bool:
     print(f"  Adding player {slot_num}: {player_name}")
     is_guest = player_name.strip().lower() == "guest"
-    surname = player_name.split(",")[0].strip() if not is_guest else "Guest"
+    surname  = player_name.split(",")[0].strip() if not is_guest else "Guest"
 
-    # Step 1: Find the visible player input fields.
-    # BRS uses inputs with placeholder "Start typing to find player..."
-    # but in headless Chromium these may render differently.
-    # We find ALL visible inputs, skip Player 1 (pre-filled, disabled/readonly),
-    # and use the remaining ones for slots 2/3/4.
-    all_input_els = await page.evaluate("""
-        () => {
-            const results = [];
-            document.querySelectorAll('input').forEach((el, i) => {
-                results.push({
-                    index: i,
-                    type: el.type,
-                    placeholder: el.placeholder,
-                    name: el.name,
-                    id: el.id,
-                    visible: el.offsetParent !== null,
-                    disabled: el.disabled,
-                    readOnly: el.readOnly,
-                    value: el.value,
-                });
-            });
-            return results;
-        }
-    """)
-    print(f"  All inputs: {all_input_els}")
-
-    # Find visible, non-disabled, non-readonly inputs that look like player search fields
-    # (empty value or placeholder mentioning player/find/typing)
-    player_inputs = page.locator(
-        'input:not([disabled]):not([readonly]):not([type="hidden"]):not([type="password"])'
-        ':not([name="username"]):not([name*="password"])'
-    )
-    total = await player_inputs.count()
-    print(f"  Total editable inputs: {total}")
-
-    # Filter to only visible ones
-    visible_indices = []
-    for i in range(total):
-        el = player_inputs.nth(i)
-        if await el.is_visible():
-            ph = await el.get_attribute("placeholder") or ""
-            val = await el.input_value()
-            print(f"    Input {i}: placeholder='{ph}' value='{val}'")
-            visible_indices.append(i)
-
-    # slot_num 2 = first editable visible input, slot_num 3 = second, slot_num 4 = third
-    target_index_in_visible = slot_num - 2
-    if target_index_in_visible >= len(visible_indices):
-        print(f"  ⚠️ Only {len(visible_indices)} visible inputs, need index {target_index_in_visible}")
+    input_index = slot_num - 2
+    if input_index >= len(player_inputs):
+        print(f"  ⚠️ Only {len(player_inputs)} inputs, need index {input_index}")
         return False
 
-    actual_index = visible_indices[target_index_in_visible]
-    target_input = player_inputs.nth(actual_index)
-    print(f"  Using input index {actual_index} for slot {slot_num}")
+    target_input = player_inputs[input_index]
+
+    # Click to open the dropdown
     await target_input.click()
     await page.wait_for_timeout(800)
     await page.screenshot(path=f"debug_player_{slot_num}_clicked.png", full_page=True)
 
-    # Step 2: Type surname into the focused search input to filter the list
-    # Skip typing for Guest — already visible in the open dropdown
+    # Type surname to filter (skip for Guest — already visible)
     if not is_guest:
         await page.keyboard.type(surname, delay=80)
         await page.wait_for_timeout(2000)
         await page.screenshot(path=f"debug_player_{slot_num}_typed.png", full_page=True)
 
-    # Log all visible li text for diagnosis in Actions logs
-    visible_items = await page.evaluate("""
-        () => [...document.querySelectorAll('li')]
-                .filter(el => el.offsetParent !== null)
-                .map(el => el.textContent.trim())
-                .filter(t => t.length > 0)
-                .join(' | ')
-    """)
-    print(f"  Visible li items: {visible_items[:500]}")
+    # Log all visible li text
+    all_li = await page.locator("li").all()
+    li_texts = []
+    for li in all_li:
+        try:
+            if await li.is_visible():
+                li_texts.append((await li.text_content() or "").strip())
+        except Exception:
+            pass
+    print(f"  Visible li items: {li_texts[:20]}")
 
-    # Step 3: Click the matching name — skip category headers
+    # Headers to skip
     SKIP = {"You and your buddies", "Other club members", "General",
             "Start typing to find player...", ""}
 
-    def is_match(text: str) -> bool:
+    def is_match(text):
         if text in SKIP:
             return False
         if is_guest:
             return text == "Guest"
         return text == player_name or text.startswith(surname)
 
-    target_sel = 'li:has-text("Guest")' if is_guest else f'li:has-text("{surname}")'
-    try:
-        items = page.locator(target_sel)
-        count = await items.count()
-        for i in range(count):
-            item = items.nth(i)
-            if not await item.is_visible():
+    # Click the matching li
+    for li in all_li:
+        try:
+            if not await li.is_visible():
                 continue
-            text = (await item.text_content() or "").strip()
+            text = (await li.text_content() or "").strip()
             if is_match(text):
-                await item.click(timeout=3000)
+                await li.click(timeout=3000)
                 await page.wait_for_timeout(800)
                 print(f"  ✅ Selected '{text}' for player {slot_num}")
                 return True
-    except Exception as e:
-        print(f"  Selector attempt failed: {e}")
+        except Exception:
+            continue
 
-    # JS fallback — walk visible li elements, skip headers
-    matched = await page.evaluate(f"""
-        () => {{
-            const skip = ["You and your buddies", "Other club members", "General",
-                          "Start typing to find player...", ""];
-            const isGuest = {"true" if is_guest else "false"};
-            const surname = "{surname}";
-            const fullName = "{player_name}";
-            for (const el of document.querySelectorAll("li")) {{
-                const text = el.textContent.trim();
-                if (!el.offsetParent || skip.includes(text)) continue;
-                const match = isGuest
-                    ? text === "Guest"
-                    : (text === fullName || text.startsWith(surname));
-                if (match) {{
-                    el.click();
-                    return text;
-                }}
-            }}
-            return null;
-        }}
-    """)
-    if matched:
-        print(f"  ✅ JS fallback selected: '{matched}'")
-        await page.wait_for_timeout(800)
-        return True
-
-    print(f"  ❌ Could not select '{player_name}' — check debug_player_{slot_num}_clicked.png")
+    print(f"  ❌ Could not select '{player_name}' — check debug_player_{slot_num}_typed.png")
     return False
 
 
 async def fill_players_and_confirm(page, players: list) -> bool:
     print(f"\nStep 4: Adding players to booking form...")
     await page.screenshot(path="debug_07_booking_form.png", full_page=True)
-    await page.wait_for_timeout(500)  # timer is running — don't dawdle
+    await page.wait_for_timeout(500)
 
-    # Dump ALL inputs on the page so we can see exactly what BRS renders headless
-    all_inputs = await page.evaluate("""
-        () => [...document.querySelectorAll('input, textarea, select, [contenteditable]')]
-            .map(el => `tag=${el.tagName} type='${el.type}' placeholder='${el.placeholder}' `
-                      + `name='${el.name}' id='${el.id}' visible=${el.offsetParent !== null}`)
-            .join('\n')
-    """)
-    print(f"  ALL form elements on page:\n{all_inputs}")
-
-    # BRS always pre-fills Player 1 with the logged-in member
     print(f"  ✅ Player 1 ({players[0]}) pre-filled by BRS")
+
+    player_inputs = await get_player_inputs(page)
+
     players_to_add = players[1:4]
     start_slot = 2
 
     for i, player in enumerate(players_to_add):
         slot = start_slot + i
-        success = await add_player(page, slot, player)
+        success = await add_player(page, slot, player, player_inputs)
         await page.wait_for_timeout(400)
         await page.screenshot(path=f"debug_player_{slot}_added.png", full_page=True)
         if not success:
@@ -322,7 +269,6 @@ async def fill_players_and_confirm(page, players: list) -> bool:
     await page.wait_for_timeout(800)
     await page.screenshot(path="debug_08_all_players.png", full_page=True)
 
-    # Click CREATE BOOKING
     print("\n  Clicking CREATE BOOKING...")
     for sel in [
         'button:has-text("Create Booking")',
