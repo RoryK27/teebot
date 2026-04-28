@@ -1,6 +1,6 @@
 """
 TeeBot TEST SCRIPT - Beaverstown Golf Club BRS
-Navigates directly to date URL instead of using calendar popup.
+DIAGNOSTIC VERSION - dumps full HTML of booking form
 """
 
 import asyncio, os, json, urllib.request
@@ -17,10 +17,7 @@ REPO           = os.environ.get("GITHUB_REPOSITORY", "")
 
 DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
 
-# Use "Guest" as a player name for an anonymous guest slot, e.g.:
-#   ["Kirwan, Rory", "Guest", "Guest", "Guest"]
-
-TEST_DAY_OF_WEEK = 2       # 0=Mon 1=Tue 2=Wed 3=Thu 4=Fri 5=Sat 6=Sun
+TEST_DAY_OF_WEEK = 2
 TEST_TIME        = "19:10"
 
 
@@ -92,7 +89,6 @@ async def select_time_and_book(page, target_time: str) -> bool:
         times = await page.locator('text=/\\d{2}:\\d{2}/').all_text_contents()
         print(f"  {times[:10]}")
 
-    # Method 1: row with time + BOOK NOW
     try:
         await page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first.click(timeout=5000)
         print(f"  ✅ Clicked BOOK NOW at {target_time}!")
@@ -103,7 +99,6 @@ async def select_time_and_book(page, target_time: str) -> bool:
     except Exception as e:
         print(f"  Method 1 failed: {e}")
 
-    # Method 2: JS row scan
     try:
         clicked = await page.evaluate(f"""
             () => {{
@@ -126,11 +121,9 @@ async def select_time_and_book(page, target_time: str) -> bool:
     except Exception as e:
         print(f"  Method 2 failed: {e}")
 
-    # Method 3: first BOOK NOW on page
     try:
         buttons = page.locator('a:has-text("BOOK NOW"), button:has-text("BOOK NOW")')
         count = await buttons.count()
-        print(f"  Found {count} BOOK NOW buttons")
         if count > 0:
             await buttons.first.click()
             await page.wait_for_load_state("domcontentloaded")
@@ -144,153 +137,67 @@ async def select_time_and_book(page, target_time: str) -> bool:
     return False
 
 
-async def get_player_inputs(page):
-    """
-    Find the player search inputs on the booking form.
-    Logs every input so we can diagnose headless rendering.
-    Returns list of (locator) for slots 2/3/4.
-    """
-    all_inputs = await page.locator("input").all()
-    print(f"  Total inputs on page: {len(all_inputs)}")
+async def diagnose_booking_form(page):
+    """Dump everything about the booking form to diagnose the player fields."""
 
-    player_slots = []
-    for i, inp in enumerate(all_inputs):
-        try:
-            tp  = await inp.get_attribute("type") or "text"
-            nm  = await inp.get_attribute("name") or ""
-            idd = await inp.get_attribute("id") or ""
-            ph  = await inp.get_attribute("placeholder") or ""
-            val = await inp.input_value()
-            vis = await inp.is_visible()
-            dis = await inp.get_attribute("disabled")
-            ro  = await inp.get_attribute("readonly")
-            print(f"    [{i}] type={tp} name={nm!r} id={idd!r} ph={ph!r} val={val!r} vis={vis} dis={dis} ro={ro}")
+    print("\n=== DIAGNOSTIC: PAGE URL ===")
+    print(f"  {page.url}")
 
-            if tp in ("hidden", "password", "submit", "button", "checkbox", "radio"):
-                continue
-            if not vis:
-                continue
-            if dis is not None or ro is not None:
-                continue
-            skip_names = ("first_name", "last_name", "email", "phone", "username")
-            if any(x in nm or x in idd for x in skip_names):
-                continue
-            player_slots.append(inp)
-        except Exception as ex:
-            print(f"    [{i}] error: {ex}")
+    print("\n=== DIAGNOSTIC: IFRAMES ===")
+    frames = page.frames
+    print(f"  Total frames: {len(frames)}")
+    for i, frame in enumerate(frames):
+        print(f"  Frame {i}: url={frame.url} name={frame.name}")
 
-    print(f"  Player slot inputs found: {len(player_slots)}")
-    return player_slots
+    print("\n=== DIAGNOSTIC: ALL INPUTS (including in iframes) ===")
+    for i, frame in enumerate(frames):
+        inputs = await frame.locator("input").all()
+        print(f"  Frame {i} ({frame.url[:60]}): {len(inputs)} inputs")
+        for j, inp in enumerate(inputs):
+            try:
+                tp  = await inp.get_attribute("type") or "text"
+                nm  = await inp.get_attribute("name") or ""
+                ph  = await inp.get_attribute("placeholder") or ""
+                val = await inp.input_value()
+                vis = await inp.is_visible()
+                print(f"    [{j}] type={tp} name={nm!r} ph={ph!r} val={val!r} vis={vis}")
+            except Exception as ex:
+                print(f"    [{j}] error: {ex}")
 
+    print("\n=== DIAGNOSTIC: ELEMENTS WITH 'player' TEXT ===")
+    # Find any element that contains "player" or "typing" text
+    for frame in frames:
+        els = await frame.locator('[placeholder*="player"], [placeholder*="typing"], [placeholder*="find"]').all()
+        if els:
+            print(f"  Frame {frame.url[:60]}: found {len(els)} elements with player/typing/find placeholder")
+            for el in els:
+                tag = await el.evaluate("el => el.tagName")
+                ph  = await el.get_attribute("placeholder") or ""
+                vis = await el.is_visible()
+                print(f"    tag={tag} ph={ph!r} vis={vis}")
 
-async def add_player(page, slot_num: int, player_name: str, player_inputs: list) -> bool:
-    print(f"  Adding player {slot_num}: {player_name}")
-    is_guest = player_name.strip().lower() == "guest"
-    surname  = player_name.split(",")[0].strip() if not is_guest else "Guest"
+    print("\n=== DIAGNOSTIC: BOOKING FORM HTML (first 3000 chars) ===")
+    # Get the main booking card HTML
+    try:
+        card = page.locator('.card, .booking-form, form').first
+        html = await card.inner_html()
+        print(html[:3000])
+    except Exception as e:
+        print(f"  Could not get card HTML: {e}")
+        # Fall back to full page
+        html = await page.content()
+        # Find the section with "Player 2"
+        idx = html.find("Player 2")
+        if idx > 0:
+            print(html[max(0, idx-200):idx+2000])
+        else:
+            print("  'Player 2' not found in page HTML")
 
-    input_index = slot_num - 2
-    if input_index >= len(player_inputs):
-        print(f"  ⚠️ Only {len(player_inputs)} inputs, need index {input_index}")
-        return False
-
-    target_input = player_inputs[input_index]
-
-    # Click to open the dropdown
-    await target_input.click()
-    await page.wait_for_timeout(800)
-    await page.screenshot(path=f"debug_player_{slot_num}_clicked.png", full_page=True)
-
-    # Type surname to filter (skip for Guest — already visible)
-    if not is_guest:
-        await page.keyboard.type(surname, delay=80)
-        await page.wait_for_timeout(2000)
-        await page.screenshot(path=f"debug_player_{slot_num}_typed.png", full_page=True)
-
-    # Log all visible li text
-    all_li = await page.locator("li").all()
-    li_texts = []
-    for li in all_li:
-        try:
-            if await li.is_visible():
-                li_texts.append((await li.text_content() or "").strip())
-        except Exception:
-            pass
-    print(f"  Visible li items: {li_texts[:20]}")
-
-    # Headers to skip
-    SKIP = {"You and your buddies", "Other club members", "General",
-            "Start typing to find player...", ""}
-
-    def is_match(text):
-        if text in SKIP:
-            return False
-        if is_guest:
-            return text == "Guest"
-        return text == player_name or text.startswith(surname)
-
-    # Click the matching li
-    for li in all_li:
-        try:
-            if not await li.is_visible():
-                continue
-            text = (await li.text_content() or "").strip()
-            if is_match(text):
-                await li.click(timeout=3000)
-                await page.wait_for_timeout(800)
-                print(f"  ✅ Selected '{text}' for player {slot_num}")
-                return True
-        except Exception:
-            continue
-
-    print(f"  ❌ Could not select '{player_name}' — check debug_player_{slot_num}_typed.png")
-    return False
-
-
-async def fill_players_and_confirm(page, players: list) -> bool:
-    print(f"\nStep 4: Adding players to booking form...")
-    await page.screenshot(path="debug_07_booking_form.png", full_page=True)
-    await page.wait_for_timeout(500)
-
-    print(f"  ✅ Player 1 ({players[0]}) pre-filled by BRS")
-
-    player_inputs = await get_player_inputs(page)
-
-    players_to_add = players[1:4]
-    start_slot = 2
-
-    for i, player in enumerate(players_to_add):
-        slot = start_slot + i
-        success = await add_player(page, slot, player, player_inputs)
-        await page.wait_for_timeout(400)
-        await page.screenshot(path=f"debug_player_{slot}_added.png", full_page=True)
-        if not success:
-            print(f"  ⚠️ Continuing without player {slot}")
-
-    await page.wait_for_timeout(800)
-    await page.screenshot(path="debug_08_all_players.png", full_page=True)
-
-    print("\n  Clicking CREATE BOOKING...")
-    for sel in [
-        'button:has-text("Create Booking")',
-        'a:has-text("Create Booking")',
-        'button:has-text("CREATE BOOKING")',
-        '.btn:has-text("Create")',
-        'input[value="Create Booking"]',
-        'button[type="submit"]',
-    ]:
-        try:
-            await page.click(sel, timeout=3000)
-            await page.wait_for_load_state("domcontentloaded")
-            await page.wait_for_timeout(3000)
-            await page.screenshot(path="confirmation_test.png", full_page=True)
-            print("  ✅ BOOKING COMPLETE!")
-            return True
-        except:
-            continue
-
-    await page.screenshot(path="debug_09_no_confirm.png", full_page=True)
-    print("  ❌ Could not find Create Booking button")
-    return False
+    # Save full HTML to file for artifact inspection
+    full_html = await page.content()
+    with open("debug_booking_form.html", "w") as f:
+        f.write(full_html)
+    print("\n  Full HTML saved to debug_booking_form.html (check artifacts)")
 
 
 async def main():
@@ -298,7 +205,7 @@ async def main():
     target_dt = get_next_date_for_dow(TEST_DAY_OF_WEEK)
 
     print("=" * 54)
-    print("  TeeBot TEST — Beaverstown Golf Club")
+    print("  TeeBot DIAGNOSTIC — Beaverstown Golf Club")
     print(f"  Date   : {target_dt.strftime('%A %d %B %Y')}")
     print(f"  Time   : {TEST_TIME}")
     print(f"  Players: {', '.join(players)}")
@@ -313,14 +220,16 @@ async def main():
         success = await select_time_and_book(page, TEST_TIME)
 
         if success:
-            await fill_players_and_confirm(page, players)
+            await page.screenshot(path="debug_07_booking_form.png", full_page=True)
+            await page.wait_for_timeout(1000)
+            await diagnose_booking_form(page)
         else:
-            print("\nCould not find time slot — check debug_05_tee_times.png")
+            print("\nCould not find time slot")
 
         await browser.close()
 
     print("\n" + "=" * 54)
-    print("  Done — check Artifacts")
+    print("  Diagnostic complete — check artifacts for debug_booking_form.html")
     print("=" * 54)
 
 
