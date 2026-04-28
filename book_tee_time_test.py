@@ -158,45 +158,61 @@ async def add_player(page, slot_num: int, player_name: str) -> bool:
     is_guest = player_name.strip().lower() == "guest"
     surname = player_name.split(",")[0].strip() if not is_guest else "Guest"
 
-    # Step 1: Find all player input fields on the booking form.
-    # On desktop BRS the placeholder text differs from mobile, so we try
-    # multiple selectors and take whichever finds inputs.
-    display_inputs = None
-    for sel in [
-        'input[placeholder="Start typing to find player..."]',
-        'input[placeholder*="typing"]',
-        'input[placeholder*="player"]',
-        'input[placeholder*="find"]',
-        # Last resort: any text input that is NOT the username/password field
-        'form input[type="text"]:not([name="username"])',
-        'input[type="text"]',
-    ]:
-        candidate = page.locator(sel)
-        c = await candidate.count()
-        print(f"  Selector '{sel}' → {c} fields")
-        if c > 0:
-            display_inputs = candidate
-            display_count = c
-            break
+    # Step 1: Find the visible player input fields.
+    # BRS uses inputs with placeholder "Start typing to find player..."
+    # but in headless Chromium these may render differently.
+    # We find ALL visible inputs, skip Player 1 (pre-filled, disabled/readonly),
+    # and use the remaining ones for slots 2/3/4.
+    all_input_els = await page.evaluate("""
+        () => {
+            const results = [];
+            document.querySelectorAll('input').forEach((el, i) => {
+                results.push({
+                    index: i,
+                    type: el.type,
+                    placeholder: el.placeholder,
+                    name: el.name,
+                    id: el.id,
+                    visible: el.offsetParent !== null,
+                    disabled: el.disabled,
+                    readOnly: el.readOnly,
+                    value: el.value,
+                });
+            });
+            return results;
+        }
+    """)
+    print(f"  All inputs: {all_input_els}")
 
-    if display_inputs is None:
-        # Dump all inputs on page for diagnosis
-        all_inputs = await page.evaluate("""
-            () => [...document.querySelectorAll('input')]
-                .map(el => `type=${el.type} placeholder='${el.placeholder}' name='${el.name}'`)
-                .join('\n')
-        """)
-        print(f"  ❌ No player inputs found. All inputs on page:\n{all_inputs}")
+    # Find visible, non-disabled, non-readonly inputs that look like player search fields
+    # (empty value or placeholder mentioning player/find/typing)
+    player_inputs = page.locator(
+        'input:not([disabled]):not([readonly]):not([type="hidden"]):not([type="password"])'
+        ':not([name="username"]):not([name*="password"])'
+    )
+    total = await player_inputs.count()
+    print(f"  Total editable inputs: {total}")
+
+    # Filter to only visible ones
+    visible_indices = []
+    for i in range(total):
+        el = player_inputs.nth(i)
+        if await el.is_visible():
+            ph = await el.get_attribute("placeholder") or ""
+            val = await el.input_value()
+            print(f"    Input {i}: placeholder='{ph}' value='{val}'")
+            visible_indices.append(i)
+
+    # slot_num 2 = first editable visible input, slot_num 3 = second, slot_num 4 = third
+    target_index_in_visible = slot_num - 2
+    if target_index_in_visible >= len(visible_indices):
+        print(f"  ⚠️ Only {len(visible_indices)} visible inputs, need index {target_index_in_visible}")
         return False
 
-    print(f"  Found {display_count} player input fields")
-
-    display_index = slot_num - 2   # slot 2 → index 0, slot 3 → index 1, slot 4 → index 2
-    if display_index >= display_count:
-        print(f"  ⚠️ Not enough inputs ({display_count}) for slot {slot_num}")
-        return False
-
-    await display_inputs.nth(display_index).click()
+    actual_index = visible_indices[target_index_in_visible]
+    target_input = player_inputs.nth(actual_index)
+    print(f"  Using input index {actual_index} for slot {slot_num}")
+    await target_input.click()
     await page.wait_for_timeout(800)
     await page.screenshot(path=f"debug_player_{slot_num}_clicked.png", full_page=True)
 
@@ -280,6 +296,15 @@ async def fill_players_and_confirm(page, players: list) -> bool:
     print(f"\nStep 4: Adding players to booking form...")
     await page.screenshot(path="debug_07_booking_form.png", full_page=True)
     await page.wait_for_timeout(500)  # timer is running — don't dawdle
+
+    # Dump ALL inputs on the page so we can see exactly what BRS renders headless
+    all_inputs = await page.evaluate("""
+        () => [...document.querySelectorAll('input, textarea, select, [contenteditable]')]
+            .map(el => `tag=${el.tagName} type='${el.type}' placeholder='${el.placeholder}' `
+                      + `name='${el.name}' id='${el.id}' visible=${el.offsetParent !== null}`)
+            .join('\n')
+    """)
+    print(f"  ALL form elements on page:\n{all_inputs}")
 
     # BRS always pre-fills Player 1 with the logged-in member
     print(f"  ✅ Player 1 ({players[0]}) pre-filled by BRS")
