@@ -3,568 +3,863 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TeeBot — Beaverstown</title>
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<title>TeeBot — Beaverstown Golf Club</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a1a0f;
-    --surface: #111f15;
-    --surface2: #162019;
-    --green: #4ade80;
-    --green-dark: #14532d;
-    --green-glow: rgba(74,222,128,0.12);
-    --text: #f0faf2;
-    --muted: #6b8f72;
-    --border: #1e3424;
-    --red: #f87171;
+    --green: #1a3a2a;
+    --green-mid: #2d5a3d;
+    --green-light: #4a8c5c;
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --cream: #f5f0e8;
+    --cream-dark: #ede5d5;
+    --white: #fafaf7;
+    --text: #1a1a18;
+    --text-muted: #6b6b5e;
+    --border: #d4ccb8;
+    --danger: #c0392b;
+    --radius: 4px;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'Instrument Sans', sans-serif;
-    background: var(--bg);
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
     color: var(--text);
     min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--green);
+    padding: 0 2rem;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    padding: 0 16px 80px;
-    overflow-x: hidden;
+    justify-content: space-between;
+    height: 64px;
+    border-bottom: 2px solid var(--gold);
+  }
+  .logo {
+    font-family: 'DM Serif Display', serif;
+    color: var(--gold);
+    font-size: 1.4rem;
+    letter-spacing: 0.02em;
+  }
+  .logo span { color: var(--cream); font-style: italic; }
+  .header-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--green-light);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
   }
 
-  body::before {
+  /* MAIN LAYOUT */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+
+  /* SECTION HEADERS */
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  /* CARDS */
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .card-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.15rem;
+    color: var(--green);
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--cream-dark);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .card-title .icon { font-size: 1rem; }
+
+  /* BOOKING SLOTS GRID */
+  .slots-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 640px) { .slots-grid { grid-template-columns: 1fr; } }
+
+  .slot-card {
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    position: relative;
+    transition: border-color 0.2s;
+  }
+  .slot-card:hover { border-color: var(--green-light); }
+  .slot-card.active { border-color: var(--gold); background: #fffef9; }
+
+  .slot-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .slot-day {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.05rem;
+    color: var(--green);
+  }
+  .slot-toggle {
+    position: relative;
+    width: 36px;
+    height: 20px;
+  }
+  .slot-toggle input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .slider::before {
     content: '';
-    position: fixed;
-    top: -200px; left: 50%;
-    transform: translateX(-50%);
-    width: 700px; height: 700px;
-    background: radial-gradient(circle, rgba(74,222,128,0.05) 0%, transparent 70%);
+    position: absolute;
+    width: 14px; height: 14px;
+    left: 3px; top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+  .slot-toggle input:checked + .slider { background: var(--green-light); }
+  .slot-toggle input:checked + .slider::before { transform: translateX(16px); }
+
+  /* FORM ELEMENTS */
+  label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  select, input[type="time"], input[type="datetime-local"], input[type="text"] {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--white);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    color: var(--text);
+    appearance: none;
+    -webkit-appearance: none;
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 0.75rem;
+  }
+  select:focus, input:focus { border-color: var(--green-light); }
+
+  .select-wrapper { position: relative; }
+  .select-wrapper::after {
+    content: '▾';
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-60%);
+    color: var(--text-muted);
     pointer-events: none;
-    z-index: 0;
+    font-size: 0.8rem;
   }
 
-  .wrap { position: relative; z-index: 1; width: 100%; max-width: 500px; }
+  /* PLAYER ROWS */
+  .players-list { display: flex; flex-direction: column; gap: 0.4rem; }
+  .player-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .player-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    width: 18px;
+    text-align: center;
+  }
+  .player-row select { margin-bottom: 0; }
+  .btn-remove {
+    background: none;
+    border: none;
+    color: var(--border);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.2rem;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .btn-remove:hover { color: var(--danger); }
 
-  header { text-align: center; padding: 44px 0 28px; }
+  /* RELEASE TIME SECTION */
+  .release-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 0.75rem;
+    align-items: end;
+  }
+  @media (max-width: 580px) { .release-grid { grid-template-columns: 1fr; } }
 
-  .flag {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: var(--green-dark);
-    border: 1px solid rgba(74,222,128,0.2);
-    border-radius: 100px; padding: 5px 14px;
-    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--green); margin-bottom: 16px;
+  .release-grid select,
+  .release-grid input { margin-bottom: 0; }
+
+  .tag {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .tag-default { background: var(--cream-dark); color: var(--text-muted); }
+  .tag-custom  { background: #fff3cd; color: #856404; }
+  .tag-active  { background: #d4edda; color: #155724; }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    letter-spacing: 0.02em;
+  }
+  .btn-primary {
+    background: var(--green);
+    color: var(--gold-light);
+  }
+  .btn-primary:hover { background: var(--green-mid); }
+  .btn-secondary {
+    background: transparent;
+    color: var(--green);
+    border: 1px solid var(--green);
+  }
+  .btn-secondary:hover { background: var(--cream-dark); }
+  .btn-danger {
+    background: var(--danger);
+    color: white;
+  }
+  .btn-sm { padding: 0.4rem 0.85rem; font-size: 0.8rem; }
+
+  .btn-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
   }
 
-  h1 {
-    font-family: 'Archivo Black', sans-serif;
-    font-size: clamp(36px, 9vw, 56px);
-    line-height: 0.95; letter-spacing: -1px;
+  /* STATUS */
+  .status-bar {
+    background: var(--green);
+    color: var(--cream);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .status-bar .status-text {
+    font-size: 0.85rem;
+    opacity: 0.85;
+  }
+  .status-bar .status-main {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1rem;
+    color: var(--gold-light);
+  }
+  .pulse {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green-light);
+    animation: pulse 2s infinite;
+    flex-shrink: 0;
+  }
+  .pulse.armed { background: var(--gold); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
   }
 
-  h1 em { font-family: 'Instrument Serif', serif; font-style: italic; color: var(--green); }
-
-  .club-name {
-    margin-top: 10px; color: var(--muted); font-size: 13px;
-    display: flex; align-items: center; justify-content: center; gap: 6px;
+  /* FALLBACK TIMES */
+  .fallback-times {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+  }
+  .time-chip {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    background: var(--cream-dark);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-muted);
+  }
+  .time-chip.preferred {
+    background: var(--green);
+    color: var(--gold-light);
+    border-color: var(--green);
   }
 
-  .club-name::before { content: '📍'; font-size: 12px; }
+  /* SCHEDULE TABLE */
+  .schedule-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .schedule-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .schedule-table td {
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid var(--cream-dark);
+    vertical-align: middle;
+  }
+  .schedule-table tr:last-child td { border-bottom: none; }
+  .schedule-table tr:hover td { background: var(--cream); }
 
-  .section-head {
-    display: flex; align-items: center; justify-content: space-between;
-    margin: 28px 0 12px;
+  /* DIVIDER */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1.25rem 0;
   }
 
-  .section-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
-  .section-badge { font-size: 11px; color: var(--green); font-variant-numeric: tabular-nums; }
-
-  /* ── Days ── */
-  .days-grid {
-    display: grid; grid-template-columns: repeat(7, 1fr);
-    gap: 6px; margin-bottom: 14px;
+  /* HELPERS */
+  .help-text {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: -0.5rem;
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
   }
-
-  .day-btn {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 10px 4px;
-    cursor: pointer; text-align: center; transition: all 0.15s; user-select: none;
-  }
-
-  .day-btn:hover { border-color: rgba(74,222,128,0.3); }
-  .day-btn.active { border-color: var(--green); background: var(--surface2); box-shadow: 0 0 0 1px var(--green); }
-
-  .day-short { font-size: 10px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 4px; }
-  .day-btn.active .day-short { color: var(--green); }
-
-  .day-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); margin: 0 auto; transition: background 0.15s; }
-  .day-btn.active .day-dot { background: var(--green); }
-
-  .schedule-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-
-  .schedule-row {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; overflow: hidden;
-    animation: slideIn 0.2s ease;
-  }
-
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .schedule-row-header {
-    display: flex; align-items: center;
-    padding: 12px 16px; gap: 12px;
-  }
-
-  .day-name-badge { font-weight: 600; font-size: 13px; color: var(--text); min-width: 90px; }
-
-  .time-input {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 8px; color: var(--text);
-    font-family: 'Instrument Sans', monospace;
-    font-size: 14px; font-weight: 600;
-    padding: 7px 10px; width: 100px; outline: none;
-    transition: border-color 0.15s; cursor: pointer;
-  }
-
-  .time-input:focus { border-color: var(--green); }
-  .time-input::-webkit-calendar-picker-indicator {
-    filter: invert(0.6) sepia(1) saturate(3) hue-rotate(90deg); cursor: pointer;
-  }
-
-  .remove-day {
-    margin-left: auto; background: none; border: none;
-    color: var(--muted); cursor: pointer; font-size: 18px;
-    line-height: 1; padding: 4px 6px; border-radius: 6px;
-    transition: color 0.15s, background 0.15s;
-  }
-  .remove-day:hover { color: var(--red); background: rgba(248,113,113,0.08); }
-
-  .time-presets { display: flex; gap: 6px; padding: 0 16px 12px; flex-wrap: wrap; }
-
-  .preset-pill {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 100px; padding: 4px 10px;
-    font-size: 11px; color: var(--muted); cursor: pointer;
-    transition: all 0.15s; font-family: 'Instrument Sans', monospace; letter-spacing: 0.5px;
-  }
-  .preset-pill:hover { border-color: rgba(74,222,128,0.4); color: var(--green); }
-  .preset-pill.active { background: var(--green-dark); border-color: var(--green); color: var(--green); }
-
-  .no-days {
-    text-align: center; padding: 20px; color: var(--muted); font-size: 13px;
-    font-style: italic; background: var(--surface);
-    border: 1px dashed var(--border); border-radius: 12px;
-  }
-
-  /* ── Players ── */
-  .players-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 24px; }
-
-  .player-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 13px 14px;
-    cursor: pointer; transition: all 0.15s;
-    display: flex; align-items: center; gap: 10px;
-    user-select: none; position: relative; overflow: hidden;
-  }
-
-  .player-card::before {
-    content: ''; position: absolute; inset: 0;
-    background: var(--green-glow); opacity: 0; transition: opacity 0.15s;
-  }
-
-  .player-card:hover { border-color: rgba(74,222,128,0.3); }
-  .player-card:hover::before { opacity: 0.6; }
-  .player-card.selected { border-color: var(--green); background: var(--surface2); }
-  .player-card.selected::before { opacity: 1; }
-  .player-card.maxed { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
-  .player-card.selected.maxed { opacity: 1; pointer-events: all; }
-
-  .avatar {
-    width: 34px; height: 34px; border-radius: 50%;
-    background: var(--green-dark); border: 2px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700; color: var(--green);
-    font-family: 'Archivo Black', sans-serif;
-    flex-shrink: 0; transition: all 0.15s; position: relative; z-index: 1;
-    letter-spacing: -0.5px;
-  }
-
-  .player-card.selected .avatar { background: var(--green); color: var(--bg); border-color: var(--green); }
-
-  .player-info { position: relative; z-index: 1; flex: 1; min-width: 0; }
-
-  .player-first { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .player-last  { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .player-card.selected .player-last { color: rgba(74,222,128,0.6); }
-
-  .check {
-    width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
-    position: relative; z-index: 1; flex-shrink: 0; transition: all 0.15s;
-  }
-  .player-card.selected .check { background: var(--green); border-color: var(--green); }
-  .check svg { opacity: 0; transition: opacity 0.15s; }
-  .player-card.selected .check svg { opacity: 1; }
-
-  /* ── Summary ── */
-  .summary-bar {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 14px 18px; margin-bottom: 20px;
-    min-height: 56px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
-  }
-
-  .summary-lbl { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); width: 100%; margin-bottom: 2px; }
-
-  .summary-chip {
-    background: var(--green-dark); border: 1px solid rgba(74,222,128,0.3);
-    color: var(--green); font-size: 12px; font-weight: 600;
-    padding: 4px 10px; border-radius: 100px;
-    animation: popIn 0.18s ease;
-  }
-
-  @keyframes popIn {
-    from { transform: scale(0.75); opacity: 0; }
-    to   { transform: scale(1); opacity: 1; }
-  }
-
-  .summary-empty { color: var(--muted); font-size: 13px; font-style: italic; }
-
-  /* ── Button ── */
-  .confirm-btn {
-    width: 100%; padding: 17px;
-    background: var(--green); color: var(--bg); border: none;
-    border-radius: 12px; font-family: 'Archivo Black', sans-serif;
-    font-size: 16px; letter-spacing: 0.5px; cursor: pointer;
-    transition: all 0.18s; position: relative; overflow: hidden;
-  }
-
-  .confirm-btn:hover:not(:disabled) {
-    background: #86efac; transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(74,222,128,0.2);
-  }
-
-  .confirm-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-
-  .confirm-btn.loading::after {
-    content: ''; position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    animation: shimmer 1.2s infinite;
-  }
-
-  @keyframes shimmer {
-    from { transform: translateX(-100%); }
-    to   { transform: translateX(100%); }
-  }
-
-  .status { margin-top: 14px; padding: 13px 16px; border-radius: 10px; font-size: 13px; display: none; line-height: 1.5; }
-  .status.success { display: block; background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.3); color: var(--green); }
-  .status.error   { display: block; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.3); color: var(--red); }
-
-  .last-saved { text-align: center; margin-top: 16px; font-size: 12px; color: var(--muted); }
-  .last-saved span { color: var(--green); }
-
-  .divider { height: 1px; background: var(--border); margin: 28px 0; }
+  .mt-1 { margin-top: 0.5rem; }
+  .mt-2 { margin-top: 1rem; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; }
+  .gap-1 { gap: 0.5rem; }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <div class="flag">⛳ TeeBot</div>
-    <h1>Plan Your<br><em>Week</em></h1>
-    <p class="club-name">Beaverstown Golf Club</p>
-  </header>
+<header>
+  <div class="logo">Tee<span>Bot</span></div>
+  <div class="header-badge">Beaverstown Golf Club</div>
+</header>
 
-  <!-- ── DAYS ── -->
-  <div class="section-head">
-    <span class="section-label">Days to Book</span>
-    <span class="section-badge" id="dayCount">0 days selected</span>
+<main>
+
+  <!-- STATUS BAR -->
+  <div class="status-bar" id="statusBar">
+    <div>
+      <div class="status-main" id="statusMain">Idle — no booking armed</div>
+      <div class="status-text" id="statusSub">Configure your bookings below and click Arm TeeBot</div>
+    </div>
+    <div class="pulse" id="statusPulse"></div>
   </div>
 
-  <div class="days-grid" id="daysGrid"></div>
-  <div class="schedule-list" id="scheduleList"></div>
+  <!-- RELEASE TIME OVERRIDE -->
+  <div class="section-label">Tee Sheet Release Time</div>
+  <div class="card">
+    <div class="card-title"><span class="icon">🕐</span> Release Schedule</div>
 
-  <div class="divider"></div>
+    <div class="flex-between" style="margin-bottom:0.75rem;">
+      <div>
+        <div style="font-weight:500;font-size:0.9rem;">Default release time</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);">Monday evenings at 20:30</div>
+      </div>
+      <span class="tag tag-default" id="releaseTag">DEFAULT</span>
+    </div>
 
-  <!-- ── PLAYERS ── -->
-  <div class="section-head">
-    <span class="section-label">Squad</span>
-    <span class="section-badge" id="playerCount">0 / 4 selected</span>
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+      <label style="margin:0;text-transform:none;font-size:0.85rem;font-weight:400;">
+        <input type="checkbox" id="overrideCheck" onchange="toggleOverride(this)">
+        Override release time for next run
+      </label>
+    </div>
+
+    <div id="overridePanel" style="display:none;">
+      <div class="release-grid">
+        <div>
+          <label>Custom release date &amp; time</label>
+          <input type="datetime-local" id="customRelease">
+        </div>
+        <div>
+          <label>Reason (optional)</label>
+          <input type="text" id="customReason" placeholder="e.g. Competition timesheet">
+        </div>
+        <div>
+          <button class="btn btn-secondary btn-sm" onclick="setCustomRelease()">Set</button>
+        </div>
+      </div>
+      <div class="help-text">TeeBot will attempt to book the instant this date/time is reached.</div>
+    </div>
+
+    <div id="releaseDisplay" style="font-family:'DM Mono',monospace;font-size:0.8rem;color:var(--text-muted);"></div>
   </div>
 
-  <div class="players-grid" id="playersGrid"></div>
+  <!-- BOOKING SLOTS -->
+  <div class="section-label">Booking Slots</div>
+  <div class="card">
+    <div class="card-title"><span class="icon">⛳</span> Weekly Tee Times</div>
+    <div class="help-text" style="margin-top:-0.75rem;margin-bottom:1rem;">
+      Enable the days you want TeeBot to book. Each slot runs independently on its scheduled release time.
+    </div>
 
-  <div class="summary-bar" id="summaryBar">
-    <div class="summary-lbl">Booked for</div>
-    <span class="summary-empty">No players selected</span>
+    <div class="slots-grid" id="slotsGrid"></div>
+
+    <button class="btn btn-secondary btn-sm mt-2" onclick="addSlot()">+ Add another day</button>
   </div>
 
-  <button class="confirm-btn" id="confirmBtn" disabled onclick="saveSelection()">
-    Save This Week's Plan
-  </button>
+  <!-- FALLBACK TIMES -->
+  <div class="section-label">Fallback Strategy</div>
+  <div class="card">
+    <div class="card-title"><span class="icon">🔄</span> If Preferred Time Is Taken</div>
+    <div class="help-text">TeeBot will try these times in order if your first choice is already booked.</div>
 
-  <div class="status" id="status"></div>
-  <div class="last-saved" id="lastSaved"></div>
+    <div>
+      <label>Search window (minutes either side)</label>
+      <div class="select-wrapper" style="width:180px;">
+        <select id="fallbackWindow" onchange="updateFallbackPreview()">
+          <option value="10">±10 minutes</option>
+          <option value="20">±20 minutes</option>
+          <option value="30" selected>±30 minutes</option>
+          <option value="60">±60 minutes</option>
+        </select>
+      </div>
+    </div>
 
-</div>
+    <div>
+      <label>Direction preference</label>
+      <div class="select-wrapper" style="width:220px;">
+        <select id="fallbackDir" onchange="updateFallbackPreview()">
+          <option value="after">Later times first</option>
+          <option value="before">Earlier times first</option>
+          <option value="closest" selected>Closest time first</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:0.5rem;">
+      <div class="section-label" style="margin-bottom:0.4rem;">Preview fallback order for 18:10</div>
+      <div class="fallback-times" id="fallbackPreview"></div>
+    </div>
+  </div>
+
+  <!-- SUMMARY TABLE -->
+  <div class="section-label">Active Schedule</div>
+  <div class="card">
+    <div class="card-title"><span class="icon">📋</span> Booking Summary</div>
+    <table class="schedule-table" id="summaryTable">
+      <thead>
+        <tr>
+          <th>Day</th>
+          <th>Preferred Time</th>
+          <th>Players</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="summaryBody">
+        <tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots configured yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ACTION BUTTONS -->
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="armTeeBot()">⚡ Arm TeeBot</button>
+    <button class="btn btn-secondary" onclick="saveConfig()">💾 Save Config</button>
+    <button class="btn btn-secondary" onclick="exportJson()">↗ Export players.json</button>
+    <button class="btn btn-danger btn-sm" onclick="disarmTeeBot()" id="disarmBtn" style="display:none;">✕ Disarm</button>
+  </div>
+
+</main>
+
 <script>
-// ── CONFIG ────────────────────────────────────────────────────────────────────
-const CONFIG = {
-  GITHUB_TOKEN: "",        // Your GitHub personal access token
-  REPO_OWNER:   "RoryK27",        // Your GitHub username
-  REPO_NAME:    "teebot",
-  FILE_PATH:    "players.json",
-};
+// ─── DATA ───────────────────────────────────────────────────────────────────
 
-// ── Real names from your Beaverstown buddy list ───────────────────────────────
-const PLAYERS = [
-  { first: "Rory",   last: "Kirwan",          brs: "Kirwan, Rory"          },
-  { first: "Lisa",   last: "Kirwan",          brs: "Kirwan, Lisa"          },
-  { first: "Paul",   last: "Carrick",         brs: "Carrick, Paul"         },
-  { first: "Ronan",  last: "Hennelly",        brs: "Hennelly, Ronan"       },
-  { first: "Peter",  last: "Kelly 'Seve'",    brs: "Kelly, Peter 'Seve'"   },
-  { first: "Edward", last: "Kelly",           brs: "Kelly, Edward"         },
-  { first: "Barry",  last: "Kirwan",          brs: "Kirwan, Barry"         },
-  { first: "Mary",   last: "Kirwan",          brs: "Kirwan, Mary"          },
-  { first: "Simon",  last: "Legge",           brs: "Legge, Simon"          },
-  { first: "Niall",  last: "Lynch",           brs: "Lynch, Niall"          },
-  { first: "George", last: "Moore",           brs: "Moore, George"         },
+const MEMBERS = [
+  { id: "434",  name: "Kirwan, Rory" },
+  { id: "3107", name: "Kirwan, Lisa" },
+  { id: "2022", name: "Carrick, Paul" },
+  { id: "3106", name: "Hennelly, Ronan" },
+  { id: "2833", name: "Kelly, Edward" },
+  { id: "396",  name: "Kelly, Peter 'Seve'" },
+  { id: "433",  name: "Kirwan, Barry" },
+  { id: "912",  name: "Kirwan, Mary" },
+  { id: "3010", name: "Legge, Simon" },
+  { id: "2197", name: "Lynch, Niall" },
+  { id: "590",  name: "Moore, George" },
+  { id: "-2",   name: "Guest" },
 ];
 
-const DAYS = [
-  { key:"mon", label:"Mon", full:"Monday",    dow:0 },
-  { key:"tue", label:"Tue", full:"Tuesday",   dow:1 },
-  { key:"wed", label:"Wed", full:"Wednesday", dow:2 },
-  { key:"thu", label:"Thu", full:"Thursday",  dow:3 },
-  { key:"fri", label:"Fri", full:"Friday",    dow:4 },
-  { key:"sat", label:"Sat", full:"Saturday",  dow:5 },
-  { key:"sun", label:"Sun", full:"Sunday",    dow:6 },
-];
+const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
-const TIME_PRESETS = ["07:00","08:00","08:20","09:00","10:00","12:00","14:00","17:00","18:00","19:00"];
+const DEFAULT_SLOT = () => ({
+  id: Date.now() + Math.random(),
+  enabled: true,
+  day: "Tuesday",
+  time: "18:10",
+  players: ["Kirwan, Rory", "", "", ""],
+});
 
-const activeDays      = {};
-const selectedPlayers = new Set();
+let slots = [];
+let armed = false;
+let customRelease = null;
+let armInterval = null;
 
-// ── Days ──────────────────────────────────────────────────────────────────────
-function buildDaysGrid() {
-  const grid = document.getElementById("daysGrid");
-  DAYS.forEach(d => {
-    const btn = document.createElement("div");
-    btn.className = "day-btn";
-    btn.id = `daybtn-${d.key}`;
-    btn.innerHTML = `<span class="day-short">${d.label}</span><div class="day-dot"></div>`;
-    btn.addEventListener("click", () => toggleDay(d));
-    grid.appendChild(btn);
-  });
-}
+// ─── INIT ────────────────────────────────────────────────────────────────────
 
-function toggleDay(d) {
-  if (activeDays[d.key]) {
-    delete activeDays[d.key];
-    document.getElementById(`daybtn-${d.key}`).classList.remove("active");
+function init() {
+  const saved = localStorage.getItem("teebot_config");
+  if (saved) {
+    try {
+      const cfg = JSON.parse(saved);
+      slots = cfg.slots || [DEFAULT_SLOT()];
+      customRelease = cfg.customRelease || null;
+    } catch(e) { slots = [DEFAULT_SLOT()]; }
   } else {
-    activeDays[d.key] = { time: "08:20" };
-    document.getElementById(`daybtn-${d.key}`).classList.add("active");
+    slots = [DEFAULT_SLOT()];
   }
-  renderScheduleList();
-  updateConfirmBtn();
-}
-
-function renderScheduleList() {
-  const list = document.getElementById("scheduleList");
-  list.innerHTML = "";
-  const keys = Object.keys(activeDays);
-  document.getElementById("dayCount").textContent =
-    keys.length === 0 ? "0 days selected" : `${keys.length} day${keys.length > 1 ? "s" : ""} selected`;
-
-  if (keys.length === 0) {
-    list.innerHTML = `<div class="no-days">Tap a day above to add it to your week</div>`;
-    return;
+  if (customRelease) {
+    document.getElementById("overrideCheck").checked = true;
+    document.getElementById("overridePanel").style.display = "block";
+    document.getElementById("customRelease").value = customRelease;
+    updateReleaseTag(true);
   }
-
-  DAYS.filter(d => activeDays[d.key]).forEach(d => {
-    const currentTime = activeDays[d.key].time;
-    const row = document.createElement("div");
-    row.className = "schedule-row";
-
-    const presetsHtml = TIME_PRESETS.map(t =>
-      `<span class="preset-pill ${t === currentTime ? 'active' : ''}" data-day="${d.key}" data-time="${t}">${t}</span>`
-    ).join("");
-
-    row.innerHTML = `
-      <div class="schedule-row-header">
-        <span class="day-name-badge">${d.full}</span>
-        <input type="time" class="time-input" id="time-${d.key}" value="${currentTime}">
-        <button class="remove-day" onclick="removeDay('${d.key}')">×</button>
-      </div>
-      <div class="time-presets">${presetsHtml}</div>
-    `;
-    list.appendChild(row);
-
-    row.querySelector(`#time-${d.key}`).addEventListener("change", e => {
-      activeDays[d.key].time = e.target.value;
-      row.querySelectorAll(".preset-pill").forEach(p => p.classList.toggle("active", p.dataset.time === e.target.value));
-    });
-
-    row.querySelectorAll(".preset-pill").forEach(pill => {
-      pill.addEventListener("click", () => {
-        const t = pill.dataset.time;
-        activeDays[d.key].time = t;
-        row.querySelector(`#time-${d.key}`).value = t;
-        row.querySelectorAll(".preset-pill").forEach(p => p.classList.toggle("active", p.dataset.time === t));
-      });
-    });
-  });
-}
-
-function removeDay(key) {
-  delete activeDays[key];
-  document.getElementById(`daybtn-${key}`).classList.remove("active");
-  renderScheduleList();
-  updateConfirmBtn();
-}
-
-// ── Players ───────────────────────────────────────────────────────────────────
-function buildPlayersGrid() {
-  const grid = document.getElementById("playersGrid");
-  PLAYERS.forEach((p, i) => {
-    const initials = p.first.charAt(0) + p.last.charAt(0);
-    const card = document.createElement("div");
-    card.className = "player-card";
-    card.dataset.brs = p.brs;
-    card.dataset.name = p.first;
-    card.innerHTML = `
-      <div class="avatar">${initials}</div>
-      <div class="player-info">
-        <div class="player-first">${p.first}</div>
-        <div class="player-last">${p.last}</div>
-      </div>
-      <div class="check">
-        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-          <path d="M1 3.5L3.8 7L9 1" stroke="#0a1a0f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-    `;
-    card.style.cssText = `opacity:0;transform:translateY(10px);transition:opacity .25s ease ${i*0.04}s,transform .25s ease ${i*0.04}s,border-color .15s,background .15s`;
-    card.addEventListener("click", () => togglePlayer(p, card));
-    grid.appendChild(card);
-    requestAnimationFrame(() => setTimeout(() => {
-      card.style.opacity = "1"; card.style.transform = "translateY(0)";
-    }, 30));
-  });
-}
-
-function togglePlayer(p, card) {
-  if (selectedPlayers.has(p.brs)) {
-    selectedPlayers.delete(p.brs);
-    card.classList.remove("selected");
-  } else {
-    if (selectedPlayers.size >= 4) return;
-    selectedPlayers.add(p.brs);
-    card.classList.add("selected");
-  }
-  document.querySelectorAll(".player-card").forEach(c => {
-    c.classList.toggle("maxed", !selectedPlayers.has(c.dataset.brs) && selectedPlayers.size >= 4);
-  });
+  renderSlots();
   updateSummary();
-  updateConfirmBtn();
+  updateFallbackPreview();
 }
+
+// ─── SLOTS ───────────────────────────────────────────────────────────────────
+
+function renderSlots() {
+  const grid = document.getElementById("slotsGrid");
+  grid.innerHTML = "";
+  slots.forEach(slot => grid.appendChild(buildSlotCard(slot)));
+}
+
+function buildSlotCard(slot) {
+  const div = document.createElement("div");
+  div.className = "slot-card" + (slot.enabled ? " active" : "");
+  div.id = "slot-" + slot.id;
+
+  const memberOptions = MEMBERS.map(m =>
+    `<option value="${m.name}" ${slot.players.includes(m.name) ? "" : ""}>${m.name}</option>`
+  ).join("");
+
+  const playerRows = [0,1,2,3].map(i => {
+    const isFirst = i === 0;
+    const val = slot.players[i] || "";
+    return `
+      <div class="player-row">
+        <span class="player-num">${i+1}</span>
+        <div class="select-wrapper">
+          <select onchange="updatePlayer('${slot.id}', ${i}, this.value)" ${isFirst ? "disabled" : ""}>
+            <option value="">— empty slot —</option>
+            ${MEMBERS.map(m => `<option value="${m.name}" ${val === m.name ? "selected" : ""}>${m.name}</option>`).join("")}
+          </select>
+        </div>
+        ${isFirst ? '<span style="width:24px"></span>' : `<button class="btn-remove" onclick="clearPlayer('${slot.id}',${i})" title="Clear">×</button>`}
+      </div>`;
+  }).join("");
+
+  const dayOptions = DAYS.map(d =>
+    `<option value="${d}" ${slot.day === d ? "selected" : ""}>${d}</option>`
+  ).join("");
+
+  div.innerHTML = `
+    <div class="slot-header">
+      <div class="slot-day">${slot.day}</div>
+      <label class="slot-toggle">
+        <input type="checkbox" ${slot.enabled ? "checked" : ""} onchange="toggleSlot('${slot.id}', this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <label>Day</label>
+    <div class="select-wrapper">
+      <select onchange="updateSlotDay('${slot.id}', this.value)">
+        ${dayOptions}
+      </select>
+    </div>
+    <label>Preferred tee time</label>
+    <input type="time" value="${slot.time}" onchange="updateSlotTime('${slot.id}', this.value)">
+    <label>Players</label>
+    <div class="players-list">${playerRows}</div>
+    <div style="margin-top:0.75rem;text-align:right;">
+      <button class="btn btn-secondary btn-sm" onclick="removeSlot('${slot.id}')" style="color:var(--danger);border-color:var(--danger);">Remove</button>
+    </div>
+  `;
+  return div;
+}
+
+function addSlot() {
+  slots.push(DEFAULT_SLOT());
+  renderSlots();
+  updateSummary();
+}
+
+function removeSlot(id) {
+  if (slots.length === 1) { alert("You need at least one slot."); return; }
+  slots = slots.filter(s => String(s.id) !== String(id));
+  renderSlots();
+  updateSummary();
+}
+
+function toggleSlot(id, val) {
+  const s = slots.find(s => String(s.id) === String(id));
+  if (s) { s.enabled = val; }
+  renderSlots();
+  updateSummary();
+}
+
+function updateSlotDay(id, val) {
+  const s = slots.find(s => String(s.id) === String(id));
+  if (s) { s.day = val; }
+  renderSlots();
+  updateSummary();
+}
+
+function updateSlotTime(id, val) {
+  const s = slots.find(s => String(s.id) === String(id));
+  if (s) { s.time = val; }
+  updateSummary();
+}
+
+function updatePlayer(id, idx, val) {
+  const s = slots.find(s => String(s.id) === String(id));
+  if (s) { s.players[idx] = val; }
+  updateSummary();
+}
+
+function clearPlayer(id, idx) {
+  const s = slots.find(s => String(s.id) === String(id));
+  if (s) { s.players[idx] = ""; }
+  renderSlots();
+  updateSummary();
+}
+
+// ─── RELEASE TIME ────────────────────────────────────────────────────────────
+
+function toggleOverride(cb) {
+  document.getElementById("overridePanel").style.display = cb.checked ? "block" : "none";
+  if (!cb.checked) {
+    customRelease = null;
+    updateReleaseTag(false);
+    document.getElementById("releaseDisplay").textContent = "";
+  }
+}
+
+function setCustomRelease() {
+  const val = document.getElementById("customRelease").value;
+  const reason = document.getElementById("customReason").value;
+  if (!val) { alert("Please pick a date and time."); return; }
+  customRelease = val;
+  const dt = new Date(val);
+  updateReleaseTag(true);
+  document.getElementById("releaseDisplay").textContent =
+    `Set: ${dt.toLocaleString("en-IE")}${reason ? " — " + reason : ""}`;
+}
+
+function updateReleaseTag(custom) {
+  const tag = document.getElementById("releaseTag");
+  tag.textContent = custom ? "CUSTOM" : "DEFAULT";
+  tag.className = "tag " + (custom ? "tag-custom" : "tag-default");
+}
+
+// ─── FALLBACK PREVIEW ────────────────────────────────────────────────────────
+
+function updateFallbackPreview() {
+  const window_mins = parseInt(document.getElementById("fallbackWindow").value);
+  const dir = document.getElementById("fallbackDir").value;
+  const base = "18:10";
+  const [bh, bm] = base.split(":").map(Number);
+  const baseMins = bh * 60 + bm;
+
+  let times = [];
+  for (let d = 10; d <= window_mins; d += 10) {
+    if (dir === "after" || dir === "closest") times.push(baseMins + d);
+    if (dir === "before" || dir === "closest") times.push(baseMins - d);
+  }
+  if (dir === "closest") {
+    times.sort((a, b) => Math.abs(a - baseMins) - Math.abs(b - baseMins));
+  }
+
+  const preview = document.getElementById("fallbackPreview");
+  preview.innerHTML = `<span class="time-chip preferred">${base} ★</span>` +
+    times.map(m => {
+      const h = Math.floor(m/60).toString().padStart(2,"0");
+      const min = (m%60).toString().padStart(2,"0");
+      return `<span class="time-chip">${h}:${min}</span>`;
+    }).join("");
+}
+
+// ─── SUMMARY ─────────────────────────────────────────────────────────────────
 
 function updateSummary() {
-  const bar = document.getElementById("summaryBar");
-  bar.innerHTML = '<div class="summary-lbl">Booked for</div>';
-  document.getElementById("playerCount").textContent = `${selectedPlayers.size} / 4 selected`;
-  if (selectedPlayers.size === 0) {
-    bar.innerHTML += '<span class="summary-empty">No players selected</span>';
+  const tbody = document.getElementById("summaryBody");
+  if (!slots.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots configured</td></tr>`;
     return;
   }
-  selectedPlayers.forEach(brs => {
-    const p = PLAYERS.find(x => x.brs === brs);
-    const chip = document.createElement("span");
-    chip.className = "summary-chip";
-    chip.textContent = p ? p.first : brs;
-    bar.appendChild(chip);
-  });
+  tbody.innerHTML = slots.map(s => {
+    const players = s.players.filter(p => p).join(", ") || "—";
+    const status = s.enabled
+      ? `<span class="tag tag-active">ACTIVE</span>`
+      : `<span class="tag tag-default">OFF</span>`;
+    return `<tr>
+      <td><strong>${s.day}</strong></td>
+      <td style="font-family:'DM Mono',monospace;">${s.time}</td>
+      <td style="font-size:0.8rem;">${players}</td>
+      <td>${status}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="editSlotScroll('${s.id}')">Edit</button></td>
+    </tr>`;
+  }).join("");
 }
 
-function updateConfirmBtn() {
-  document.getElementById("confirmBtn").disabled =
-    !(Object.keys(activeDays).length > 0 && selectedPlayers.size === 4);
+function editSlotScroll(id) {
+  const el = document.getElementById("slot-" + id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-// ── Save ──────────────────────────────────────────────────────────────────────
-async function saveSelection() {
-  const btn = document.getElementById("confirmBtn");
-  const statusEl = document.getElementById("status");
+// ─── ARM / DISARM ────────────────────────────────────────────────────────────
 
-  if (!CONFIG.GITHUB_TOKEN || !CONFIG.REPO_OWNER) {
-    statusEl.className = "status error";
-    statusEl.textContent = "⚠️ Set your GITHUB_TOKEN and REPO_OWNER in the CONFIG block at the top of this file's script tag.";
-    return;
+function armTeeBot() {
+  const active = slots.filter(s => s.enabled);
+  if (!active.length) { alert("No active slots to arm."); return; }
+
+  armed = true;
+  saveConfig();
+
+  const releaseTime = customRelease
+    ? new Date(customRelease)
+    : nextMondayAt2030();
+
+  document.getElementById("statusMain").textContent = "⚡ ARMED — Waiting for tee sheet release";
+  document.getElementById("statusSub").textContent =
+    `Release: ${releaseTime.toLocaleString("en-IE")} · ${active.length} slot(s) queued`;
+  document.getElementById("statusPulse").classList.add("armed");
+  document.getElementById("disarmBtn").style.display = "inline-flex";
+  document.getElementById("releaseTag").textContent = "ARMED";
+  document.getElementById("releaseTag").className = "tag tag-active";
+
+  // Countdown ticker
+  if (armInterval) clearInterval(armInterval);
+  armInterval = setInterval(() => {
+    const now = new Date();
+    const diff = releaseTime - now;
+    if (diff <= 0) {
+      clearInterval(armInterval);
+      document.getElementById("statusSub").textContent = "🚀 Release time reached — booking in progress!";
+      return;
+    }
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    document.getElementById("statusSub").textContent =
+      `Release in: ${h}h ${m}m ${s}s · ${active.length} slot(s) queued`;
+  }, 1000);
+}
+
+function disarmTeeBot() {
+  armed = false;
+  if (armInterval) clearInterval(armInterval);
+  document.getElementById("statusMain").textContent = "Idle — no booking armed";
+  document.getElementById("statusSub").textContent = "Configure your bookings below and click Arm TeeBot";
+  document.getElementById("statusPulse").classList.remove("armed");
+  document.getElementById("disarmBtn").style.display = "none";
+  updateReleaseTag(!!customRelease);
+}
+
+function nextMondayAt2030() {
+  const now = new Date();
+  const d = new Date(now);
+  const day = d.getDay(); // 0=Sun
+  const daysToMon = (1 - day + 7) % 7 || 7;
+  d.setDate(d.getDate() + daysToMon);
+  d.setHours(20, 30, 0, 0);
+  return d;
+}
+
+// ─── SAVE / EXPORT ───────────────────────────────────────────────────────────
+
+function saveConfig() {
+  localStorage.setItem("teebot_config", JSON.stringify({ slots, customRelease }));
+  const btn = event?.target;
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = "✓ Saved";
+    setTimeout(() => btn.textContent = orig, 1500);
   }
+}
 
-  btn.classList.add("loading");
-  btn.textContent = "Saving...";
-  statusEl.className = "status";
+function exportJson() {
+  // Export players.json for the first enabled slot (or all slots)
+  const active = slots.filter(s => s.enabled);
+  if (!active.length) { alert("No active slots to export."); return; }
 
-  const bookings = DAYS.filter(d => activeDays[d.key]).map(d => ({
-    label:       d.full,
-    day_of_week: d.dow,
-    target_time: activeDays[d.key].time,
-    players:     4,
+  // Build one players.json per slot
+  const exports = active.map(s => ({
+    day: s.day,
+    time: s.time,
+    players: s.players.filter(p => p),
   }));
 
-  const payload = {
-    players:  Array.from(selectedPlayers),   // BRS format: "Surname, Firstname"
-    bookings,
-    updated:  new Date().toISOString(),
-    club_url: "https://members.brsgolf.com/beaverstown/tee-sheet/1",
-  };
-
-  try {
-    const apiBase = `https://api.github.com/repos/${CONFIG.REPO_OWNER}/${CONFIG.REPO_NAME}/contents/${CONFIG.FILE_PATH}`;
-    let sha = null;
-    try {
-      const res = await fetch(apiBase, { headers: { Authorization: `token ${CONFIG.GITHUB_TOKEN}` } });
-      if (res.ok) sha = (await res.json()).sha;
-    } catch (_) {}
-
-    const put = await fetch(apiBase, {
-      method: "PUT",
-      headers: { Authorization: `token ${CONFIG.GITHUB_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: `TeeBot: ${bookings.map(b=>b.label).join(", ")} — ${Array.from(selectedPlayers).map(b=>b.split(",")[1]?.trim()||b).join(", ")}`,
-        content: btoa(JSON.stringify(payload, null, 2)),
-        ...(sha ? { sha } : {}),
-      }),
-    });
-
-    if (put.ok) {
-      const names = Array.from(selectedPlayers).map(b => b.split(",")[1]?.trim() || b);
-      statusEl.className = "status success";
-      statusEl.textContent = `✅ Saved! Booking ${names.join(", ")} — ${bookings.map(b=>`${b.label} ${b.target_time}`).join(" · ")}`;
-      document.getElementById("lastSaved").innerHTML =
-        `Saved at <span>${new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</span>`;
-    } else {
-      throw new Error(`GitHub API ${put.status}`);
-    }
-  } catch (err) {
-    statusEl.className = "status error";
-    statusEl.textContent = `❌ Save failed: ${err.message}`;
-  }
-
-  btn.classList.remove("loading");
-  btn.textContent = "Save This Week's Plan";
+  const blob = new Blob([JSON.stringify({ bookings: exports }, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "players.json";
+  a.click();
 }
 
-buildDaysGrid();
-renderScheduleList();
-buildPlayersGrid();
+// ─── BOOT ────────────────────────────────────────────────────────────────────
+init();
 </script>
 </body>
 </html>
