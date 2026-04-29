@@ -1,20 +1,9 @@
 {
   "bookings": [
     {
-      "day": "Sunday",
-      "date": "2026-05-03",
-      "time": "19:00",
-      "players": [
-        "Kirwan, Rory",
-        "Guest",
-        "Guest",
-        "Guest"
-      ]
-    },
-    {
       "day": "Monday",
       "date": "2026-05-04",
-      "time": "19:10",
+      "time": "19:20",
       "players": [
         "Kirwan, Rory",
         "Guest",
