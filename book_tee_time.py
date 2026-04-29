@@ -1,7 +1,7 @@
 """
-TeeBot - Beaverstown Golf Club
-Main weekly bot — runs Monday 8:28 PM, logs in early, waits for 8:30,
-then books immediately. Supports fallback times if first choice is taken.
+TeeBot - Beaverstown Golf Club BRS
+Production booking script. Reads bookings from players.json,
+books each active slot the moment the tee sheet is released.
 """
 
 import asyncio, os, json, urllib.request
@@ -11,25 +11,47 @@ from playwright.async_api import async_playwright
 BRS_LOGIN_URL  = "https://members.brsgolf.com/beaverstown"
 TEE_SHEET_BASE = "https://members.brsgolf.com/beaverstown/tee-sheet/1"
 
-BRS_EMAIL    = os.environ["BRS_EMAIL"]
-BRS_PASSWORD = os.environ["BRS_PASSWORD"]
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-REPO         = os.environ.get("GITHUB_REPOSITORY", "")
+BRS_EMAIL      = os.environ["BRS_EMAIL"]
+BRS_PASSWORD   = os.environ["BRS_PASSWORD"]
+GITHUB_TOKEN   = os.environ.get("GITHUB_TOKEN", "")
+REPO           = os.environ.get("GITHUB_REPOSITORY", "")
 
-DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
-DEFAULT_BOOKINGS = [
+# Member IDs from BRS select options
+PLAYER_IDS = {
+    "Kirwan, Rory":      "434",
+    "Kirwan, Lisa":      "3107",
+    "Carrick, Paul":     "2022",
+    "Hennelly, Ronan":   "3106",
+    "Kelly, Edward":     "2833",
+    "Kelly, Peter 'Seve'": "396",
+    "Kirwan, Barry":     "433",
+    "Kirwan, Mary":      "912",
+    "Legge, Simon":      "3010",
+    "Lynch, Niall":      "2197",
+    "Moore, George":     "590",
+    "Guest":             "-2",
+}
+
+# Default fallback: try times within 30 mins, closest first
+FALLBACK_WINDOW_MINS = 30
+FALLBACK_INTERVAL    = 10  # try every 10 mins
+
+
+def load_bookings():
+    """
+    Load bookings from players.json in the repo.
+    Format:
     {
-        "label": "Saturday Morning",
-        "day_of_week": 5,
-        "preferred_times": ["08:20", "08:30", "08:40", "08:50", "09:00"],
-        "players": 4
+      "bookings": [
+        { "day": "Tuesday",   "time": "18:10", "players": ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"] },
+        { "day": "Wednesday", "time": "18:40", "players": ["Kirwan, Rory", "Guest", "Guest"] }
+      ]
     }
-]
-
-
-def load_plan():
+    """
     if not GITHUB_TOKEN or not REPO:
-        return DEFAULT_PLAYERS, DEFAULT_BOOKINGS
+        print("  ⚠️  No GITHUB_TOKEN/REPO — cannot load players.json")
+        return []
+
     url = f"https://api.github.com/repos/{REPO}/contents/players.json"
     req = urllib.request.Request(url, headers={
         "Authorization": f"token {GITHUB_TOKEN}",
@@ -38,115 +60,102 @@ def load_plan():
     try:
         with urllib.request.urlopen(req) as resp:
             data = json.loads(resp.read().decode())
-            players  = data.get("players", DEFAULT_PLAYERS)[:4]
-            bookings = data.get("bookings", DEFAULT_BOOKINGS)
-            print(f"✅ Players : {', '.join(players)}")
-            print(f"✅ Bookings: {len(bookings)} slot(s)")
-            return players, bookings
+            bookings = data.get("bookings", [])
+            print(f"  Loaded {len(bookings)} booking(s) from players.json")
+            return bookings
     except Exception as e:
-        print(f"⚠️  Could not read players.json: {e} — using defaults")
-        return DEFAULT_PLAYERS, DEFAULT_BOOKINGS
+        print(f"  ⚠️  Could not load players.json: {e}")
+        return []
 
 
-def get_next_date_for_dow(dow: int) -> datetime:
+def get_next_date_for_dow(day_name: str) -> datetime:
+    days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    dow = days.index(day_name)
     today = datetime.now()
     days_ahead = (dow - today.weekday()) % 7 or 7
     return today + timedelta(days=days_ahead)
 
 
-async def login(page) -> bool:
-    print("\n🔐 Logging in...")
+def build_fallback_times(preferred_time: str) -> list:
+    """Return list of times to try in order, closest to preferred first."""
+    h, m = map(int, preferred_time.split(":"))
+    base = h * 60 + m
+    candidates = []
+    for delta in range(FALLBACK_INTERVAL, FALLBACK_WINDOW_MINS + 1, FALLBACK_INTERVAL):
+        candidates.append((abs(delta), base + delta))
+        candidates.append((abs(delta), base - delta))
+    candidates.sort(key=lambda x: x[0])
+    times = []
+    for _, mins in candidates:
+        if 0 <= mins < 24 * 60:
+            t = f"{mins//60:02d}:{mins%60:02d}"
+            if t not in times:
+                times.append(t)
+    return [preferred_time] + times
+
+
+async def login(page):
+    print("Step 1: Logging in...")
     await page.goto(BRS_LOGIN_URL, wait_until="domcontentloaded")
     await page.wait_for_timeout(2000)
-    try:
-        await page.fill('input[name="username"], input[type="text"]', BRS_EMAIL)
-        await page.fill('input[type="password"]', BRS_PASSWORD)
-        await page.click('button:has-text("LOGIN")')
-        await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_timeout(2000)
-        print(f"✅ Logged in — URL: {page.url}")
-        return True
-    except Exception as e:
-        print(f"❌ Login failed: {e}")
-        return False
+    await page.fill('input[name="username"], input[type="text"]', BRS_EMAIL)
+    await page.fill('input[type="password"]', BRS_PASSWORD)
+    await page.click('button:has-text("LOGIN")')
+    await page.wait_for_load_state("domcontentloaded")
+    await page.wait_for_timeout(3000)
+    print(f"  URL after login: {page.url}")
+    if "beaverstown" not in page.url:
+        raise Exception("Login failed — check BRS_EMAIL and BRS_PASSWORD secrets")
 
 
-async def navigate_to_date(page, target_dt: datetime):
-    """Go directly to the tee sheet URL for the target date."""
-    date_path = target_dt.strftime("%Y/%m/%d")
-    url = f"{TEE_SHEET_BASE}/{date_path}"
-    print(f"\n📅 Navigating to {target_dt.strftime('%A %d %B')} — {url}")
+async def go_to_date(page, target_dt: datetime):
+    date_str = target_dt.strftime("%Y/%m/%d")
+    url = f"{TEE_SHEET_BASE}/{date_str}"
+    print(f"\nStep 2: Loading {target_dt.strftime('%A %d %B')} tee sheet...")
     await page.goto(url, wait_until="domcontentloaded")
-    await page.wait_for_timeout(2000)
-
-
-async def wait_for_8_30(page, target_dt: datetime):
-    """
-    If it's before 8:30 PM, stay on the page and wait.
-    Refresh every 10 seconds until 8:30 hits, then go immediately.
-    This keeps the session alive and means zero delay when slots open.
-    """
-    now = datetime.now()
-    opening_time = now.replace(hour=20, minute=30, second=0, microsecond=0)
-
-    if now >= opening_time:
-        print("⏰ Already past 8:30 PM — booking immediately")
-        return
-
-    wait_secs = (opening_time - now).total_seconds()
-    print(f"⏳ Waiting {wait_secs:.0f}s until 8:30 PM — staying on page, refreshing every 10s")
-
-    while True:
-        now = datetime.now()
-        remaining = (opening_time - now).total_seconds()
-        if remaining <= 0:
-            print("🚀 8:30 PM — GO!")
-            # Refresh one final time to get fresh tee sheet
-            date_path = target_dt.strftime("%Y/%m/%d")
-            await page.goto(f"{TEE_SHEET_BASE}/{date_path}", wait_until="domcontentloaded")
-            await page.wait_for_timeout(500)
-            return
-        elif remaining <= 10:
-            # In the last 10 seconds — check every 0.5s
-            await asyncio.sleep(0.5)
-        else:
-            # Refresh page every 10s to keep session alive
-            await asyncio.sleep(10)
-            date_path = target_dt.strftime("%Y/%m/%d")
-            await page.goto(f"{TEE_SHEET_BASE}/{date_path}", wait_until="domcontentloaded")
-            print(f"  🔄 Refreshed — {remaining:.0f}s remaining")
+    await page.wait_for_timeout(3000)
 
 
 async def try_book_time(page, target_time: str) -> bool:
-    """Try to click BOOK NOW for a specific time. Returns True if booking form opens."""
-    print(f"  ⏱  Trying {target_time}...")
+    """Attempt to click BOOK NOW for target_time. Returns True if booking form opens."""
+    content = await page.content()
+    if target_time not in content:
+        print(f"  ⏭  {target_time} not on page")
+        return False
 
-    # Method 1: row with time text + BOOK NOW link
+    # Method 1: row selector
     try:
-        await page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first.click(timeout=3000)
-        await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_timeout(1500)
-        # Check we're on booking form (not "already booked" popup)
-        content = await page.content()
-        if "Booking Details" in content or "Create Booking" in content:
-            print(f"  ✅ {target_time} slot opened!")
-            return True
-        elif "Booked" in content or "already" in content.lower():
-            print(f"  ❌ {target_time} already taken")
-            await page.go_back()
-            await page.wait_for_timeout(1000)
-            return False
-    except:
-        pass
+        btn = page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first
+        if await btn.count() > 0:
+            await btn.click(timeout=5000)
+            await page.wait_for_load_state("domcontentloaded")
+            await page.wait_for_timeout(2000)
+
+            # Check for "already booked" modal
+            if await page.locator('text="already booked"').count() > 0:
+                print(f"  ✗  {target_time} already fully booked")
+                for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
+                    try:
+                        await page.locator(sel).first.click(timeout=2000)
+                        await page.wait_for_timeout(800)
+                        break
+                    except: pass
+                return False
+
+            # Verify booking form opened
+            if await page.locator('text="Booking Details"').count() > 0:
+                print(f"  ✅  Booking form opened for {target_time}")
+                return True
+    except Exception as e:
+        print(f"  Method 1 failed for {target_time}: {e}")
 
     # Method 2: JS row scan
     try:
         clicked = await page.evaluate(f"""
             () => {{
-                const rows = document.querySelectorAll('tr');
-                for (const row of rows) {{
+                for (const row of document.querySelectorAll('tr')) {{
                     if (row.textContent.includes('{target_time}')) {{
-                        const btn = row.querySelector('a[href*="book"], a:last-child');
+                        const btn = row.querySelector('a, button');
                         if (btn) {{ btn.click(); return true; }}
                     }}
                 }}
@@ -155,168 +164,169 @@ async def try_book_time(page, target_time: str) -> bool:
         """)
         if clicked:
             await page.wait_for_load_state("domcontentloaded")
-            await page.wait_for_timeout(1500)
-            content = await page.content()
-            if "Booking Details" in content or "Create Booking" in content:
-                print(f"  ✅ {target_time} opened via JS!")
+            await page.wait_for_timeout(2000)
+            if await page.locator('text="Booking Details"').count() > 0:
+                print(f"  ✅  Booking form opened for {target_time} (JS method)")
                 return True
-            await page.go_back()
-            await page.wait_for_timeout(1000)
-    except:
-        pass
+    except Exception as e:
+        print(f"  Method 2 failed for {target_time}: {e}")
 
     return False
 
 
-async def add_player(page, slot_num: int, player_name: str) -> bool:
-    """Click the player slot input, wait for buddy dropdown, click the name."""
-    print(f"  👤 Player {slot_num}: {player_name}")
-
-    inputs = page.locator('input[placeholder*="typing"], input[placeholder*="find player"]')
-    count  = await inputs.count()
-    input_index = slot_num - 2  # slot 2 = index 0
-
-    if input_index >= count:
-        print(f"  ⚠️ Only {count} inputs, can't fill slot {slot_num}")
+async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
+    """Set a player slot using Select2's programmatic API."""
+    member_id = PLAYER_IDS.get(player_name)
+    if not member_id:
+        print(f"  ⚠️  No member ID for '{player_name}'")
         return False
 
-    # Click the input to open the buddy dropdown
-    await inputs.nth(input_index).click()
-    await page.wait_for_timeout(1500)
+    select_id = f"member_booking_form_player_{slot_num}"
 
-    # Click the player name in the dropdown
-    for sel in [
-        f'li:has-text("{player_name}")',
-        f'div:has-text("{player_name}")',
-        f'[role="option"]:has-text("{player_name}")',
-    ]:
-        try:
-            await page.locator(sel).filter(has_text=player_name).first.click(timeout=3000)
-            print(f"  ✅ Selected {player_name}")
-            await page.wait_for_timeout(600)
-            return True
-        except:
-            continue
-
-    # JS fallback — exact text match
-    clicked = await page.evaluate(f"""
+    result = await page.evaluate(f"""
         () => {{
-            const all = document.querySelectorAll('li, div, span');
-            for (const el of all) {{
-                if (el.textContent.trim() === '{player_name}') {{
-                    el.click();
-                    return true;
+            const sel = document.getElementById('{select_id}');
+            if (!sel) return 'ERROR: element not found';
+            const option = sel.querySelector('option[value="{member_id}"]');
+            if (!option) return 'ERROR: option {member_id} not in select';
+            try {{
+                const $ = window.jQuery || window.$;
+                if ($ && $(sel).data('select2')) {{
+                    $(sel).val('{member_id}').trigger('change');
+                    return 'OK:select2';
                 }}
-            }}
-            return false;
+            }} catch(e) {{}}
+            sel.value = '{member_id}';
+            sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            return 'OK:native';
         }}
     """)
-    if clicked:
-        print(f"  ✅ JS selected {player_name}")
-        await page.wait_for_timeout(600)
-        return True
 
-    print(f"  ⚠️ Could not find {player_name} in dropdown")
-    return False
+    if result.startswith("ERROR"):
+        print(f"  ⚠️  Slot {slot_num} ({player_name}): {result}")
+        return False
+
+    await page.wait_for_timeout(400)
+    display = await page.evaluate(f"""
+        () => {{
+            const el = document.getElementById('select2-member_booking_form_player_{slot_num}-container');
+            return el ? el.textContent.trim() : '';
+        }}
+    """)
+    print(f"  ✅  Player {slot_num}: {display or player_name}")
+    return True
 
 
-async def complete_booking(page, players: list) -> bool:
-    """Fill players 2-4 and click Create Booking."""
-    print("\n📋 Filling booking form...")
-    await page.wait_for_timeout(500)
-
-    # Player 1 is pre-filled — fill 2, 3, 4
-    for i, player in enumerate(players[1:4]):
-        slot = i + 2
-        await add_player(page, slot, player)
-
-    await page.wait_for_timeout(800)
-
-    # Click Create Booking
+async def confirm_booking(page) -> bool:
+    """Click the confirm/submit button."""
     for sel in [
         'button:has-text("Create Booking")',
-        'a:has-text("Create Booking")',
         'button:has-text("CREATE BOOKING")',
+        'button:has-text("Update Booking")',
+        'button:has-text("UPDATE BOOKING")',
+        '#member_booking_form_confirm_booking',
         'button[type="submit"]',
     ]:
         try:
             await page.click(sel, timeout=3000)
             await page.wait_for_load_state("domcontentloaded")
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(3000)
+            # Check for confirmation
             content = await page.content()
             if "confirmed" in content.lower() or "booking" in content.lower():
-                await page.screenshot(path="confirmation.png", full_page=True)
-                print("✅ BOOKING CONFIRMED!")
+                print("  ✅  BOOKING CONFIRMED!")
+                await page.screenshot(path=f"confirmation_{datetime.now().strftime('%H%M%S')}.png", full_page=True)
                 return True
         except:
             continue
-
+    print("  ❌  Could not find confirm button")
     await page.screenshot(path="error_no_confirm.png", full_page=True)
     return False
 
 
-async def book_single(page, booking: dict, players: list) -> bool:
-    """Handle one booking — tries preferred times in order until one succeeds."""
-    dow             = booking.get("day_of_week", 5)
-    preferred_times = booking.get("preferred_times", ["08:20"])
-    label           = booking.get("label", "Booking")
-    target_dt       = get_next_date_for_dow(dow)
+async def book_slot(page, booking: dict) -> bool:
+    """Book a single slot — tries preferred time then fallbacks."""
+    day     = booking["day"]
+    time    = booking["time"]
+    players = booking["players"][:4]
 
-    print(f"\n{'─'*54}")
-    print(f"📅 {label} — {target_dt.strftime('%A %d %B %Y')}")
-    print(f"⏰ Preferred times: {', '.join(preferred_times)}")
-    print(f"👥 Players: {', '.join(players)}")
-    print(f"{'─'*54}")
+    target_dt = get_next_date_for_dow(day)
+    fallback_times = build_fallback_times(time)
 
-    await navigate_to_date(page, target_dt)
-    await wait_for_8_30(page, target_dt)
+    print(f"\n{'='*54}")
+    print(f"  Booking: {day} {target_dt.strftime('%d %B')} — preferred {time}")
+    print(f"  Players: {', '.join(p for p in players if p)}")
+    print(f"  Will try: {fallback_times}")
+    print(f"{'='*54}")
 
-    # Try each preferred time in order
-    for t in preferred_times:
-        booked = await try_book_time(page, t)
-        if booked:
-            success = await complete_booking(page, players)
-            if success:
-                return True
-            else:
-                # Booking form failed — go back and try next time
-                await navigate_to_date(page, target_dt)
-        # Small pause between attempts
-        await page.wait_for_timeout(300)
+    await go_to_date(page, target_dt)
 
-    print(f"❌ All preferred times exhausted for {label}")
-    return False
+    booked_time = None
+    for attempt_time in fallback_times:
+        print(f"\n  Trying {attempt_time}...")
+        opened = await try_book_time(page, attempt_time)
+        if opened:
+            booked_time = attempt_time
+            break
+        # Reload the tee sheet before next attempt
+        await go_to_date(page, target_dt)
+
+    if not booked_time:
+        print(f"\n  ❌  No available slot found within fallback window")
+        await page.screenshot(path=f"error_{day.lower()}_no_slot.png", full_page=True)
+        return False
+
+    # Fill players
+    print(f"\n  Setting players for {booked_time}...")
+    print(f"  ✅  Player 1 ({players[0]}) pre-filled by BRS")
+    for i, player in enumerate(players[1:], start=2):
+        if player:
+            await set_player_via_select2(page, i, player)
+            await page.wait_for_timeout(300)
+
+    await page.screenshot(path=f"debug_{day.lower()}_players.png", full_page=True)
+
+    # Confirm
+    await page.wait_for_timeout(500)
+    success = await confirm_booking(page)
+    return success
 
 
 async def main():
-    players, bookings = load_plan()
+    bookings = load_bookings()
+    if not bookings:
+        print("No bookings configured in players.json — nothing to do")
+        return
 
     print("=" * 54)
-    print("  🏌️  TeeBot — Beaverstown Golf Club")
-    print(f"  {datetime.now().strftime('%A %d %B %Y, %H:%M')}")
+    print("  TeeBot — Beaverstown Golf Club")
+    print(f"  Run time: {datetime.now().strftime('%A %d %B %Y %H:%M:%S')}")
+    print(f"  Bookings to process: {len(bookings)}")
     print("=" * 54)
+
+    results = []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page    = await browser.new_page(viewport={"width": 1280, "height": 900})
 
-        if not await login(page):
-            print("❌ Login failed — check secrets")
-            await browser.close()
-            return
+        await login(page)
 
-        results = []
         for booking in bookings:
-            ok = await book_single(page, booking, players)
-            results.append((booking["label"], ok))
+            try:
+                success = await book_slot(page, booking)
+                results.append((booking["day"], booking["time"], success))
+            except Exception as e:
+                print(f"\n  ❌  Error booking {booking.get('day','?')}: {e}")
+                await page.screenshot(path=f"error_{booking.get('day','unknown').lower()}.png", full_page=True)
+                results.append((booking["day"], booking["time"], False))
 
         await browser.close()
 
     print("\n" + "=" * 54)
-    print("  📊 Summary")
-    print("=" * 54)
-    for label, ok in results:
-        print(f"  {'✅' if ok else '❌'}  {label}")
+    print("  RESULTS")
+    for day, time, ok in results:
+        print(f"  {'✅' if ok else '❌'}  {day} {time}")
     print("=" * 54)
 
 
