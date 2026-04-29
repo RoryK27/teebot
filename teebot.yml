@@ -1,17 +1,15 @@
-name: TeeBot - Book Tee Times
+name: TeeBot - Auto Book Tee Time
 
 on:
   schedule:
-    # 8:28 PM BST (summer, UTC+1) = 19:28 UTC
-    # Bot logs in at 8:28, waits on the page, fires the instant 8:30 hits
-    - cron: '28 19 * * 1'
-  workflow_dispatch:
+    # Runs Monday at 20:29 UTC (= 20:29 Irish time in winter, 21:29 in summer)
+    # Adjust to 19:29 UTC in summer (when Ireland is UTC+1)
+    - cron: '29 20 * * 1'
+  workflow_dispatch:  # Also allows manual trigger
 
 jobs:
   book-tee-time:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,8 +37,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: booking-confirmations
+          name: teebot-screenshots-${{ github.run_id }}
           path: |
-            confirmation*.png
-            error*.png
-          retention-days: 14
+            confirmation_*.png
+            error_*.png
+            debug_*.png
+          retention-days: 7
