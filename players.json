@@ -1,9 +1,14 @@
 {
   "bookings": [
     {
-      "day": "Tuesday",
-      "time": "18:10",
-      "players": ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
+      "day": "Sunday",
+      "time": "18:40",
+      "players": [
+        "Kirwan, Rory",
+        "Guest",
+        "Guest",
+        "Guest"
+      ]
     }
   ]
 }
