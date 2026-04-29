@@ -1,7 +1,7 @@
 """
-TeeBot - Beaverstown Golf Club BRS
-Uses Select2 field IDs and member IDs to set players directly via JS,
-bypassing the UI autocomplete entirely.
+TeeBot TEST SCRIPT - Beaverstown Golf Club BRS
+Reads day/time/players from players.json exactly like the production script.
+Only books the FIRST active booking in players.json.
 """
 
 import asyncio, os, json, urllib.request
@@ -16,31 +16,33 @@ BRS_PASSWORD   = os.environ["BRS_PASSWORD"]
 GITHUB_TOKEN   = os.environ.get("GITHUB_TOKEN", "")
 REPO           = os.environ.get("GITHUB_REPOSITORY", "")
 
-# Member IDs from the BRS select options (confirmed from page HTML)
+# Member IDs from BRS select options
 PLAYER_IDS = {
-    "Kirwan, Rory":    "434",
-    "Kirwan, Lisa":    "3107",
-    "Carrick, Paul":   "2022",
-    "Hennelly, Ronan": "3106",
-    "Kelly, Edward":   "2833",
+    "Kirwan, Rory":        "434",
+    "Kirwan, Lisa":        "3107",
+    "Carrick, Paul":       "2022",
+    "Hennelly, Ronan":     "3106",
+    "Kelly, Edward":       "2833",
     "Kelly, Peter 'Seve'": "396",
-    "Kirwan, Barry":   "433",
-    "Kirwan, Mary":    "912",
-    "Legge, Simon":    "3010",
-    "Lynch, Niall":    "2197",
-    "Moore, George":   "590",
-    "Guest":           "-2",
+    "Kirwan, Barry":       "433",
+    "Kirwan, Mary":        "912",
+    "Legge, Simon":        "3010",
+    "Lynch, Niall":        "2197",
+    "Moore, George":       "590",
+    "Guest":               "-2",
 }
 
-DEFAULT_PLAYERS = ["Kirwan, Rory", "Kirwan, Lisa", "Carrick, Paul", "Hennelly, Ronan"]
+# Fallback: if preferred time is taken, try these windows
+FALLBACK_WINDOW_MINS = 30
+FALLBACK_INTERVAL    = 10
 
-TEST_DAY_OF_WEEK = 2       # 0=Mon 1=Tue 2=Wed 3=Thu 4=Fri 5=Sat 6=Sun
-TEST_TIME        = "19:10"
 
-
-def load_players():
+def load_booking():
+    """Load the first booking from players.json in the repo."""
     if not GITHUB_TOKEN or not REPO:
-        return DEFAULT_PLAYERS
+        print("  ⚠️  No GITHUB_TOKEN/REPO set")
+        return None
+
     url = f"https://api.github.com/repos/{REPO}/contents/players.json"
     req = urllib.request.Request(url, headers={
         "Authorization": f"token {GITHUB_TOKEN}",
@@ -49,15 +51,40 @@ def load_players():
     try:
         with urllib.request.urlopen(req) as resp:
             data = json.loads(resp.read().decode())
-            return data.get("players", DEFAULT_PLAYERS)[:4]
-    except:
-        return DEFAULT_PLAYERS
+            bookings = data.get("bookings", [])
+            if not bookings:
+                print("  ⚠️  No bookings found in players.json")
+                return None
+            print(f"  Loaded {len(bookings)} booking(s) — running first one")
+            return bookings[0]
+    except Exception as e:
+        print(f"  ⚠️  Could not load players.json: {e}")
+        return None
 
 
-def get_next_date_for_dow(dow: int) -> datetime:
+def get_next_date_for_dow(day_name: str) -> datetime:
+    days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    dow = days.index(day_name)
     today = datetime.now()
     days_ahead = (dow - today.weekday()) % 7 or 7
     return today + timedelta(days=days_ahead)
+
+
+def build_fallback_times(preferred_time: str) -> list:
+    h, m = map(int, preferred_time.split(":"))
+    base = h * 60 + m
+    candidates = []
+    for delta in range(FALLBACK_INTERVAL, FALLBACK_WINDOW_MINS + 1, FALLBACK_INTERVAL):
+        candidates.append((delta, base + delta))
+        candidates.append((delta, base - delta))
+    candidates.sort(key=lambda x: x[0])
+    times = [preferred_time]
+    for _, mins in candidates:
+        if 0 <= mins < 24 * 60:
+            t = f"{mins//60:02d}:{mins%60:02d}"
+            if t not in times:
+                times.append(t)
+    return times
 
 
 async def login(page):
@@ -90,37 +117,47 @@ async def go_to_date(page, target_dt: datetime):
     if day in content and month in content:
         print(f"  ✅ Correct date: {target_dt.strftime('%A %d %B')}")
     else:
-        print(f"  ⚠️ Date may not be correct")
+        print(f"  ⚠️ Date may not be correct — check debug_04_tee_sheet.png")
 
 
-async def select_time_and_book(page, target_time: str) -> bool:
-    print(f"\nStep 3: Finding {target_time} BOOK NOW...")
-    await page.wait_for_timeout(1500)
-    await page.screenshot(path="debug_05_tee_times.png", full_page=True)
-
+async def try_book_time(page, target_time: str) -> bool:
+    """Try to click BOOK NOW for target_time. Returns True if booking form opens."""
     content = await page.content()
-    if target_time in content:
-        print(f"  ✅ '{target_time}' found on page!")
-    else:
-        print(f"  ⚠️ '{target_time}' not found")
-        times = await page.locator('text=/\\d{2}:\\d{2}/').all_text_contents()
-        print(f"  Visible times: {times[:10]}")
+    if target_time not in content:
+        print(f"  ⏭  {target_time} not on page")
+        return False
 
+    # Method 1: row selector
     try:
-        await page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first.click(timeout=5000)
-        print(f"  ✅ Clicked BOOK NOW at {target_time}!")
-        await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_timeout(2000)
-        await page.screenshot(path="debug_06_after_book_now.png", full_page=True)
-        return True
+        btn = page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first
+        if await btn.count() > 0:
+            await btn.click(timeout=5000)
+            await page.wait_for_load_state("domcontentloaded")
+            await page.wait_for_timeout(2000)
+            await page.screenshot(path="debug_06_after_book_now.png", full_page=True)
+
+            # Check for already booked modal
+            if await page.locator('text="already booked"').count() > 0:
+                print(f"  ✗  {target_time} already fully booked")
+                for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
+                    try:
+                        await page.locator(sel).first.click(timeout=2000)
+                        await page.wait_for_timeout(800)
+                        break
+                    except: pass
+                return False
+
+            if await page.locator('text="Booking Details"').count() > 0:
+                print(f"  ✅ Booking form opened for {target_time}")
+                return True
     except Exception as e:
         print(f"  Method 1 failed: {e}")
 
+    # Method 2: JS row scan
     try:
         clicked = await page.evaluate(f"""
             () => {{
-                const rows = document.querySelectorAll('tr');
-                for (const row of rows) {{
+                for (const row of document.querySelectorAll('tr')) {{
                     if (row.textContent.includes('{target_time}')) {{
                         const btn = row.querySelector('a, button');
                         if (btn) {{ btn.click(); return true; }}
@@ -130,92 +167,57 @@ async def select_time_and_book(page, target_time: str) -> bool:
             }}
         """)
         if clicked:
-            print("  ✅ Method 2: JS clicked!")
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
-            await page.screenshot(path="debug_06_js_click.png", full_page=True)
-            return True
+            if await page.locator('text="Booking Details"').count() > 0:
+                print(f"  ✅ Booking form opened for {target_time} (JS)")
+                return True
     except Exception as e:
         print(f"  Method 2 failed: {e}")
 
-    try:
-        buttons = page.locator('a:has-text("BOOK NOW"), button:has-text("BOOK NOW")')
-        count = await buttons.count()
-        if count > 0:
-            await buttons.first.click()
-            await page.wait_for_load_state("domcontentloaded")
-            await page.wait_for_timeout(2000)
-            await page.screenshot(path="debug_06_fallback.png", full_page=True)
-            return True
-    except Exception as e:
-        print(f"  Method 3 failed: {e}")
-
-    await page.screenshot(path="debug_06_failed.png", full_page=True)
     return False
 
 
 async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
-    """
-    Set a player slot using Select2's programmatic API.
-    The select element IDs are: member_booking_form_player_1/2/3/4
-    We trigger Select2's val() + trigger('change') to set the value properly.
-    """
     member_id = PLAYER_IDS.get(player_name)
     if not member_id:
-        print(f"  ⚠️ No member ID found for '{player_name}' — check PLAYER_IDS dict")
+        print(f"  ⚠️ No member ID for '{player_name}'")
         return False
 
     select_id = f"member_booking_form_player_{slot_num}"
-    print(f"  Setting player {slot_num} ({player_name}, id={member_id}) via Select2...")
 
     result = await page.evaluate(f"""
         () => {{
             const sel = document.getElementById('{select_id}');
-            if (!sel) return 'ERROR: select element not found';
-
-            // Check the option exists
+            if (!sel) return 'ERROR: element not found';
             const option = sel.querySelector('option[value="{member_id}"]');
-            if (!option) return 'ERROR: option value {member_id} not found in select';
-
-            // Method 1: Use Select2's jQuery API if available
+            if (!option) return 'ERROR: option {member_id} not found';
             try {{
                 const $ = window.jQuery || window.$;
                 if ($ && $(sel).data('select2')) {{
                     $(sel).val('{member_id}').trigger('change');
-                    return 'OK: Select2 jQuery API';
+                    return 'OK:select2';
                 }}
             }} catch(e) {{}}
-
-            // Method 2: Set native select value and dispatch events
             sel.value = '{member_id}';
             sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            sel.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            return 'OK: native select value set';
+            return 'OK:native';
         }}
     """)
 
-    print(f"  JS result: {result}")
-
-    if result.startswith("ERROR"):
+    if result.startswith('ERROR'):
+        print(f"  ⚠️ Slot {slot_num} ({player_name}): {result}")
         return False
 
-    await page.wait_for_timeout(500)
-
-    # Verify it worked by checking the Select2 rendered display
+    await page.wait_for_timeout(400)
     display = await page.evaluate(f"""
         () => {{
-            const rendered = document.getElementById('select2-{select_id}-container');
-            return rendered ? rendered.textContent.trim() : 'not found';
+            const el = document.getElementById('select2-member_booking_form_player_{slot_num}-container');
+            return el ? el.textContent.trim() : '';
         }}
     """)
-    print(f"  Select2 display now shows: '{display}'")
-
-    if display == player_name or display not in ("Start typing to find player...", "not found", ""):
-        print(f"  ✅ Player {slot_num} set to '{display}'")
-        return True
-
-    print(f"  ⚠️ Display still shows '{display}' — may not have worked")
-    return False
+    print(f"  ✅ Player {slot_num}: {display or player_name}")
+    return True
 
 
 async def fill_players_and_confirm(page, players: list) -> bool:
@@ -225,26 +227,21 @@ async def fill_players_and_confirm(page, players: list) -> bool:
 
     print(f"  ✅ Player 1 ({players[0]}) pre-filled by BRS")
 
-    # Set players 2, 3, 4 via Select2
-    players_to_add = players[1:4]
-    for i, player in enumerate(players_to_add):
-        slot = i + 2
-        success = await set_player_via_select2(page, slot, player)
-        await page.wait_for_timeout(300)
-        await page.screenshot(path=f"debug_player_{slot}_added.png", full_page=True)
-        if not success:
-            print(f"  ⚠️ Could not set player {slot}, continuing anyway")
+    for i, player in enumerate(players[1:4], start=2):
+        if player:
+            await set_player_via_select2(page, i, player)
+            await page.wait_for_timeout(300)
+            await page.screenshot(path=f"debug_player_{i}_added.png", full_page=True)
 
     await page.wait_for_timeout(800)
     await page.screenshot(path="debug_08_all_players.png", full_page=True)
 
-    # Click the confirm button — on the edit form it's "Update Booking"
-    print("\n  Clicking confirm button...")
+    print("\n  Clicking CREATE BOOKING...")
     for sel in [
-        'button:has-text("Update Booking")',
-        'button:has-text("UPDATE BOOKING")',
         'button:has-text("Create Booking")',
         'button:has-text("CREATE BOOKING")',
+        'button:has-text("Update Booking")',
+        'button:has-text("UPDATE BOOKING")',
         '#member_booking_form_confirm_booking',
         'button[type="submit"]',
     ]:
@@ -264,14 +261,23 @@ async def fill_players_and_confirm(page, players: list) -> bool:
 
 
 async def main():
-    players   = load_players()
-    target_dt = get_next_date_for_dow(TEST_DAY_OF_WEEK)
+    booking = load_booking()
+    if not booking:
+        print("❌ No booking config found — check players.json")
+        return
+
+    day     = booking["day"]
+    time    = booking["time"]
+    players = booking["players"][:4]
+
+    target_dt      = get_next_date_for_dow(day)
+    fallback_times = build_fallback_times(time)
 
     print("=" * 54)
-    print("  TeeBot — Beaverstown Golf Club")
+    print("  TeeBot TEST — Beaverstown Golf Club")
     print(f"  Date   : {target_dt.strftime('%A %d %B %Y')}")
-    print(f"  Time   : {TEST_TIME}")
-    print(f"  Players: {', '.join(players)}")
+    print(f"  Time   : {time} (+ fallbacks: {fallback_times[1:4]})")
+    print(f"  Players: {', '.join(p for p in players if p)}")
     print("=" * 54)
 
     async with async_playwright() as p:
@@ -280,12 +286,21 @@ async def main():
 
         await login(page)
         await go_to_date(page, target_dt)
-        success = await select_time_and_book(page, TEST_TIME)
 
-        if success:
+        booked_time = None
+        for attempt_time in fallback_times:
+            print(f"\n  Trying {attempt_time}...")
+            opened = await try_book_time(page, attempt_time)
+            if opened:
+                booked_time = attempt_time
+                break
+            await go_to_date(page, target_dt)
+
+        if booked_time:
             await fill_players_and_confirm(page, players)
         else:
-            print("\nCould not find time slot — check debug screenshots")
+            print("\n❌ No available slot found")
+            await page.screenshot(path="debug_no_slot.png", full_page=True)
 
         await browser.close()
 
