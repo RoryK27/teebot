@@ -2,10 +2,11 @@ name: TeeBot - Auto Book Tee Time
 
 on:
   schedule:
-    # Runs Monday at 20:29 UTC (= 20:29 Irish time in winter, 21:29 in summer)
-    # Adjust to 19:29 UTC in summer (when Ireland is UTC+1)
-    - cron: '29 20 * * 1'
-  workflow_dispatch:  # Also allows manual trigger
+    # Ireland is UTC in winter, UTC+1 in summer (last Sun Mar - last Sun Oct)
+    # We run BOTH crons — only one will be near 20:30 Irish time
+    - cron: '29 20 * * 1'   # 20:29 UTC = 20:29 Irish winter time
+    - cron: '29 19 * * 1'   # 19:29 UTC = 20:29 Irish summer time (UTC+1)
+  workflow_dispatch:
 
 jobs:
   book-tee-time:
