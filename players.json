@@ -1,8 +1,7 @@
 {
   "bookings": [
     {
-      "day": "Sunday",
-      "time": "18:50",
+      "time": "19:00",
       "players": [
         "Kirwan, Rory",
         "Guest",
