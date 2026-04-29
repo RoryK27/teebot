@@ -3,650 +3,467 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TeeBot — Beaverstown Golf Club</title>
+<title>TeeBot — Beaverstown</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --green: #1a3a2a;
-    --green-mid: #2d5a3d;
-    --green-light: #4a8c5c;
-    --gold: #c9a84c;
-    --gold-light: #e8c97a;
-    --cream: #f5f0e8;
-    --cream-dark: #ede5d5;
-    --white: #fafaf7;
-    --text: #1a1a18;
-    --text-muted: #6b6b5e;
-    --border: #d4ccb8;
-    --danger: #c0392b;
-    --radius: 4px;
-  }
+:root {
+  --green: #1a3a2a;
+  --green-mid: #2d5a3d;
+  --green-light: #4a8c5c;
+  --gold: #c9a84c;
+  --gold-light: #e8c97a;
+  --cream: #f5f0e8;
+  --cream-dark: #ede5d5;
+  --white: #fafaf7;
+  --text: #1a1a18;
+  --text-muted: #6b6b5e;
+  --border: #d4ccb8;
+  --danger: #c0392b;
+  --success: #27ae60;
+  --radius: 4px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--text); min-height: 100vh; }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+/* HEADER */
+header {
+  background: var(--green);
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  border-bottom: 2px solid var(--gold);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.logo { font-family: 'DM Serif Display', serif; color: var(--gold); font-size: 1.4rem; }
+.logo span { color: var(--cream); font-style: italic; }
+.header-right { display: flex; align-items: center; gap: 1rem; }
+.header-badge { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--green-light); text-transform: uppercase; letter-spacing: 0.1em; }
 
-  body {
-    font-family: 'DM Sans', sans-serif;
-    background: var(--cream);
-    color: var(--text);
-    min-height: 100vh;
-  }
+/* MAIN */
+main { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
 
-  /* HEADER */
-  header {
-    background: var(--green);
-    padding: 0 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 64px;
-    border-bottom: 2px solid var(--gold);
-  }
-  .logo {
-    font-family: 'DM Serif Display', serif;
-    color: var(--gold);
-    font-size: 1.4rem;
-    letter-spacing: 0.02em;
-  }
-  .logo span { color: var(--cream); font-style: italic; }
-  .header-badge {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--green-light);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
+/* STATUS BAR */
+.status-bar {
+  background: var(--green);
+  color: var(--cream);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.status-main { font-family: 'DM Serif Display', serif; font-size: 1rem; color: var(--gold-light); }
+.status-sub { font-size: 0.8rem; opacity: 0.8; margin-top: 0.15rem; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green-light); animation: pulse 2s infinite; flex-shrink: 0; }
+.pulse.armed { background: var(--gold); }
+.pulse.ok { background: var(--success); animation: none; }
+.pulse.error { background: var(--danger); animation: none; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
 
-  /* MAIN LAYOUT */
-  main {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 2.5rem 1.5rem 4rem;
-  }
+/* CARDS */
+.card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.card-title { font-family: 'DM Serif Display', serif; font-size: 1.1rem; color: var(--green); margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--cream-dark); display: flex; align-items: center; gap: 0.5rem; }
 
-  /* SECTION HEADERS */
-  .section-label {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    color: var(--text-muted);
-    margin-bottom: 0.75rem;
-  }
+/* SECTION LABEL */
+.section-label { font-family: 'DM Mono', monospace; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); margin-bottom: 0.6rem; }
 
-  /* CARDS */
-  .card {
-    background: var(--white);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    margin-bottom: 1.25rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  }
-  .card-title {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.15rem;
-    color: var(--green);
-    margin-bottom: 1.25rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--cream-dark);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .card-title .icon { font-size: 1rem; }
+/* FORM */
+label { display: block; font-size: 0.75rem; font-weight: 500; color: var(--text-muted); margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em; }
+input[type="text"], input[type="password"], input[type="time"], input[type="datetime-local"], select {
+  width: 100%; padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--white); font-family: 'DM Sans', sans-serif;
+  font-size: 0.88rem; color: var(--text); outline: none;
+  transition: border-color 0.15s; appearance: none; -webkit-appearance: none;
+}
+input:focus, select:focus { border-color: var(--green-light); }
+.select-wrap { position: relative; }
+.select-wrap::after { content: '▾'; position: absolute; right: 0.75rem; top: 50%; transform: translateY(-55%); color: var(--text-muted); pointer-events: none; font-size: 0.75rem; }
+.form-row { display: grid; gap: 0.75rem; margin-bottom: 0.75rem; }
+.form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+.form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+@media(max-width:600px){ .form-row.cols-2,.form-row.cols-3{ grid-template-columns:1fr; } }
+.help-text { font-size: 0.76rem; color: var(--text-muted); line-height: 1.5; margin-top: 0.35rem; }
 
-  /* BOOKING SLOTS GRID */
-  .slots-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-  @media (max-width: 640px) { .slots-grid { grid-template-columns: 1fr; } }
+/* BUTTONS */
+.btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.2rem; border-radius: var(--radius); font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; letter-spacing: 0.01em; }
+.btn-primary { background: var(--green); color: var(--gold-light); }
+.btn-primary:hover { background: var(--green-mid); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: transparent; color: var(--green); border: 1px solid var(--green); }
+.btn-secondary:hover { background: var(--cream-dark); }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger:hover { opacity: 0.9; }
+.btn-sm { padding: 0.4rem 0.85rem; font-size: 0.78rem; }
+.btn-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
 
-  .slot-card {
-    background: var(--cream);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.25rem;
-    position: relative;
-    transition: border-color 0.2s;
-  }
-  .slot-card:hover { border-color: var(--green-light); }
-  .slot-card.active { border-color: var(--gold); background: #fffef9; }
+/* TOKEN SECTION */
+.token-input-wrap { position: relative; }
+.token-input-wrap input { padding-right: 3.5rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; }
+.token-toggle { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.8rem; }
+.token-status { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; margin-top: 0.5rem; }
+.token-status.ok { color: var(--success); }
+.token-status.err { color: var(--danger); }
 
-  .slot-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-  }
-  .slot-day {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.05rem;
-    color: var(--green);
-  }
-  .slot-toggle {
-    position: relative;
-    width: 36px;
-    height: 20px;
-  }
-  .slot-toggle input { opacity: 0; width: 0; height: 0; }
-  .slider {
-    position: absolute;
-    inset: 0;
-    background: var(--border);
-    border-radius: 20px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .slider::before {
-    content: '';
-    position: absolute;
-    width: 14px; height: 14px;
-    left: 3px; top: 3px;
-    background: white;
-    border-radius: 50%;
-    transition: transform 0.2s;
-  }
-  .slot-toggle input:checked + .slider { background: var(--green-light); }
-  .slot-toggle input:checked + .slider::before { transform: translateX(16px); }
+/* PLAYER SLOTS */
+.slots-container { display: flex; flex-direction: column; gap: 1rem; }
+.slot-card { background: var(--cream); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; transition: border-color 0.2s; }
+.slot-card.active { border-color: var(--gold); }
+.slot-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.slot-title { font-family: 'DM Serif Display', serif; font-size: 1rem; color: var(--green); }
+.slot-controls { display: flex; align-items: center; gap: 0.75rem; }
 
-  /* FORM ELEMENTS */
-  label {
-    display: block;
-    font-size: 0.78rem;
-    font-weight: 500;
-    color: var(--text-muted);
-    margin-bottom: 0.3rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
+/* TOGGLE */
+.toggle { position: relative; width: 38px; height: 22px; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 22px; cursor: pointer; transition: background 0.2s; }
+.toggle-slider::before { content:''; position:absolute; width:16px; height:16px; left:3px; top:3px; background:white; border-radius:50%; transition:transform 0.2s; }
+.toggle input:checked + .toggle-slider { background: var(--green-light); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
 
-  select, input[type="time"], input[type="datetime-local"], input[type="text"] {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--white);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.9rem;
-    color: var(--text);
-    appearance: none;
-    -webkit-appearance: none;
-    outline: none;
-    transition: border-color 0.15s;
-    margin-bottom: 0.75rem;
-  }
-  select:focus, input:focus { border-color: var(--green-light); }
+/* PLAYER ROWS */
+.players-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+@media(max-width:580px){ .players-grid{ grid-template-columns:1fr; } }
+.player-row { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 0.4rem; }
+.player-num { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text-muted); text-align: center; }
+.player-row select { margin-bottom: 0; }
 
-  .select-wrapper { position: relative; }
-  .select-wrapper::after {
-    content: '▾';
-    position: absolute;
-    right: 0.75rem;
-    top: 50%;
-    transform: translateY(-60%);
-    color: var(--text-muted);
-    pointer-events: none;
-    font-size: 0.8rem;
-  }
+/* RELEASE */
+.release-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 1rem; padding: 0.75rem; background: var(--cream); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 0.75rem; }
+.release-info { font-size: 0.85rem; }
+.release-info strong { display: block; margin-bottom: 0.1rem; }
+.release-info span { font-size: 0.78rem; color: var(--text-muted); }
+.tag { display: inline-block; font-family: 'DM Mono', monospace; font-size: 0.62rem; padding: 0.2rem 0.5rem; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+.tag-default { background: var(--cream-dark); color: var(--text-muted); }
+.tag-custom  { background: #fff3cd; color: #856404; }
+.tag-armed   { background: #d4edda; color: #155724; }
+.tag-error   { background: #f8d7da; color: #721c24; }
 
-  /* PLAYER ROWS */
-  .players-list { display: flex; flex-direction: column; gap: 0.4rem; }
-  .player-row {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .player-num {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    width: 18px;
-    text-align: center;
-  }
-  .player-row select { margin-bottom: 0; }
-  .btn-remove {
-    background: none;
-    border: none;
-    color: var(--border);
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 0.2rem;
-    line-height: 1;
-    transition: color 0.15s;
-  }
-  .btn-remove:hover { color: var(--danger); }
+/* SUMMARY */
+.summary-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+.summary-table th { text-align: left; font-size: 0.65rem; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+.summary-table td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--cream-dark); vertical-align: middle; }
+.summary-table tr:last-child td { border-bottom: none; }
+.summary-table tr:hover td { background: var(--cream); }
 
-  /* RELEASE TIME SECTION */
-  .release-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto;
-    gap: 0.75rem;
-    align-items: end;
-  }
-  @media (max-width: 580px) { .release-grid { grid-template-columns: 1fr; } }
+/* TOAST */
+.toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--green); color: var(--cream); padding: 0.75rem 1.25rem; border-radius: var(--radius); font-size: 0.85rem; border-left: 3px solid var(--gold); transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 999; max-width: 320px; }
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.error { background: var(--danger); border-color: #e88; }
 
-  .release-grid select,
-  .release-grid input { margin-bottom: 0; }
+/* SPINNER */
+.spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-  .tag {
-    display: inline-block;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.65rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 2px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .tag-default { background: var(--cream-dark); color: var(--text-muted); }
-  .tag-custom  { background: #fff3cd; color: #856404; }
-  .tag-active  { background: #d4edda; color: #155724; }
-
-  /* BUTTONS */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.6rem 1.25rem;
-    border-radius: var(--radius);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-    letter-spacing: 0.02em;
-  }
-  .btn-primary {
-    background: var(--green);
-    color: var(--gold-light);
-  }
-  .btn-primary:hover { background: var(--green-mid); }
-  .btn-secondary {
-    background: transparent;
-    color: var(--green);
-    border: 1px solid var(--green);
-  }
-  .btn-secondary:hover { background: var(--cream-dark); }
-  .btn-danger {
-    background: var(--danger);
-    color: white;
-  }
-  .btn-sm { padding: 0.4rem 0.85rem; font-size: 0.8rem; }
-
-  .btn-row {
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    margin-top: 1rem;
-  }
-
-  /* STATUS */
-  .status-bar {
-    background: var(--green);
-    color: var(--cream);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-bottom: 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-  .status-bar .status-text {
-    font-size: 0.85rem;
-    opacity: 0.85;
-  }
-  .status-bar .status-main {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1rem;
-    color: var(--gold-light);
-  }
-  .pulse {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--green-light);
-    animation: pulse 2s infinite;
-    flex-shrink: 0;
-  }
-  .pulse.armed { background: var(--gold); }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.8); }
-  }
-
-  /* FALLBACK TIMES */
-  .fallback-times {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.5rem;
-  }
-  .time-chip {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.75rem;
-    padding: 0.25rem 0.6rem;
-    background: var(--cream-dark);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    color: var(--text-muted);
-  }
-  .time-chip.preferred {
-    background: var(--green);
-    color: var(--gold-light);
-    border-color: var(--green);
-  }
-
-  /* SCHEDULE TABLE */
-  .schedule-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
-  }
-  .schedule-table th {
-    text-align: left;
-    font-size: 0.7rem;
-    font-family: 'DM Mono', monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .schedule-table td {
-    padding: 0.65rem 0.75rem;
-    border-bottom: 1px solid var(--cream-dark);
-    vertical-align: middle;
-  }
-  .schedule-table tr:last-child td { border-bottom: none; }
-  .schedule-table tr:hover td { background: var(--cream); }
-
-  /* DIVIDER */
-  .divider {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 1.25rem 0;
-  }
-
-  /* HELPERS */
-  .help-text {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-top: -0.5rem;
-    margin-bottom: 0.75rem;
-    line-height: 1.5;
-  }
-  .mt-1 { margin-top: 0.5rem; }
-  .mt-2 { margin-top: 1rem; }
-  .flex-between { display: flex; align-items: center; justify-content: space-between; }
-  .gap-1 { gap: 0.5rem; }
+/* DIVIDER */
+hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">Tee<span>Bot</span></div>
-  <div class="header-badge">Beaverstown Golf Club</div>
+  <div class="header-right">
+    <div class="header-badge">Beaverstown GC</div>
+  </div>
 </header>
 
 <main>
 
-  <!-- STATUS BAR -->
+  <!-- STATUS -->
   <div class="status-bar" id="statusBar">
     <div>
-      <div class="status-main" id="statusMain">Idle — no booking armed</div>
-      <div class="status-text" id="statusSub">Configure your bookings below and click Arm TeeBot</div>
+      <div class="status-main" id="statusMain">TeeBot Ready</div>
+      <div class="status-sub" id="statusSub">Configure your booking below and click Book Now or Arm</div>
     </div>
     <div class="pulse" id="statusPulse"></div>
   </div>
 
-  <!-- RELEASE TIME OVERRIDE -->
+  <!-- GITHUB TOKEN -->
+  <div class="section-label">GitHub Connection</div>
+  <div class="card">
+    <div class="card-title">🔑 Personal Access Token</div>
+    <div class="token-input-wrap">
+      <input type="password" id="patInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" oninput="saveToken()">
+      <button class="token-toggle" onclick="toggleTokenVis()" title="Show/hide">👁</button>
+    </div>
+    <div class="help-text">Your token is stored in this browser only — never sent anywhere except GitHub. Needs <code>repo</code> + <code>workflow</code> scopes.</div>
+    <div id="tokenStatus"></div>
+    <div class="btn-row">
+      <button class="btn btn-secondary btn-sm" onclick="testToken()">Verify Token</button>
+    </div>
+  </div>
+
+  <!-- BOOKING CONFIG -->
+  <div class="section-label">Booking Configuration</div>
+  <div class="card">
+    <div class="card-title">⛳ Tee Time &amp; Players</div>
+
+    <div class="slots-container" id="slotsContainer"></div>
+    <button class="btn btn-secondary btn-sm mt-2" onclick="addSlot()">+ Add another day</button>
+  </div>
+
+  <!-- RELEASE TIME -->
   <div class="section-label">Tee Sheet Release Time</div>
   <div class="card">
-    <div class="card-title"><span class="icon">🕐</span> Release Schedule</div>
+    <div class="card-title">🕐 Release Schedule</div>
 
-    <div class="flex-between" style="margin-bottom:0.75rem;">
+    <div class="release-row">
       <div>
-        <div style="font-weight:500;font-size:0.9rem;">Default release time</div>
-        <div style="font-size:0.8rem;color:var(--text-muted);">Monday evenings at 20:30</div>
+        <span class="tag tag-default" id="releaseTag">DEFAULT</span>
       </div>
-      <span class="tag tag-default" id="releaseTag">DEFAULT</span>
+      <div class="release-info">
+        <strong>Monday 20:30</strong>
+        <span id="releaseDesc">Standard weekly release — TeeBot will run automatically via schedule</span>
+      </div>
     </div>
 
-    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
-      <label style="margin:0;text-transform:none;font-size:0.85rem;font-weight:400;">
-        <input type="checkbox" id="overrideCheck" onchange="toggleOverride(this)">
-        Override release time for next run
-      </label>
-    </div>
+    <label style="display:flex;align-items:center;gap:0.5rem;text-transform:none;font-size:0.85rem;font-weight:400;margin-bottom:0.75rem;">
+      <input type="checkbox" id="overrideCheck" onchange="toggleOverride(this)">
+      Override for a one-off release time
+    </label>
 
     <div id="overridePanel" style="display:none;">
-      <div class="release-grid">
+      <div class="form-row cols-2">
         <div>
           <label>Custom release date &amp; time</label>
           <input type="datetime-local" id="customRelease">
         </div>
         <div>
-          <label>Reason (optional)</label>
-          <input type="text" id="customReason" placeholder="e.g. Competition timesheet">
-        </div>
-        <div>
-          <button class="btn btn-secondary btn-sm" onclick="setCustomRelease()">Set</button>
+          <label>Note (optional)</label>
+          <input type="text" id="customNote" placeholder="e.g. Competition timesheet">
         </div>
       </div>
-      <div class="help-text">TeeBot will attempt to book the instant this date/time is reached.</div>
+      <div class="help-text">TeeBot will attempt to book the instant this time is reached. Use Book Now below to test immediately.</div>
     </div>
-
-    <div id="releaseDisplay" style="font-family:'DM Mono',monospace;font-size:0.8rem;color:var(--text-muted);"></div>
   </div>
 
-  <!-- BOOKING SLOTS -->
-  <div class="section-label">Booking Slots</div>
+  <!-- ACTIONS -->
+  <div class="section-label">Actions</div>
   <div class="card">
-    <div class="card-title"><span class="icon">⛳</span> Weekly Tee Times</div>
-    <div class="help-text" style="margin-top:-0.75rem;margin-bottom:1rem;">
-      Enable the days you want TeeBot to book. Each slot runs independently on its scheduled release time.
-    </div>
+    <div class="card-title">🚀 Run TeeBot</div>
 
-    <div class="slots-grid" id="slotsGrid"></div>
-
-    <button class="btn btn-secondary btn-sm mt-2" onclick="addSlot()">+ Add another day</button>
-  </div>
-
-  <!-- FALLBACK TIMES -->
-  <div class="section-label">Fallback Strategy</div>
-  <div class="card">
-    <div class="card-title"><span class="icon">🔄</span> If Preferred Time Is Taken</div>
-    <div class="help-text">TeeBot will try these times in order if your first choice is already booked.</div>
-
-    <div>
-      <label>Search window (minutes either side)</label>
-      <div class="select-wrapper" style="width:180px;">
-        <select id="fallbackWindow" onchange="updateFallbackPreview()">
-          <option value="10">±10 minutes</option>
-          <option value="20">±20 minutes</option>
-          <option value="30" selected>±30 minutes</option>
-          <option value="60">±60 minutes</option>
-        </select>
+    <div class="form-row cols-2" style="margin-bottom:0;">
+      <div>
+        <div style="font-weight:600;margin-bottom:0.3rem;">Book Now (Test)</div>
+        <div class="help-text">Saves config and triggers the test workflow immediately. Use this to verify a known free slot.</div>
+        <button class="btn btn-secondary mt-1" id="bookNowBtn" onclick="bookNow()">▶ Run Test Booking</button>
+      </div>
+      <div>
+        <div style="font-weight:600;margin-bottom:0.3rem;">Arm for Release Time</div>
+        <div class="help-text">Saves config to repo. The scheduled workflow will fire automatically at 20:30 Monday (or your custom time).</div>
+        <button class="btn btn-primary mt-1" id="armBtn" onclick="armTeeBot()">⚡ Save &amp; Arm</button>
       </div>
     </div>
 
-    <div>
-      <label>Direction preference</label>
-      <div class="select-wrapper" style="width:220px;">
-        <select id="fallbackDir" onchange="updateFallbackPreview()">
-          <option value="after">Later times first</option>
-          <option value="before">Earlier times first</option>
-          <option value="closest" selected>Closest time first</option>
-        </select>
-      </div>
-    </div>
-
-    <div style="margin-top:0.5rem;">
-      <div class="section-label" style="margin-bottom:0.4rem;">Preview fallback order for 18:10</div>
-      <div class="fallback-times" id="fallbackPreview"></div>
-    </div>
+    <hr>
+    <div id="actionStatus" style="font-size:0.82rem;color:var(--text-muted);min-height:1.2rem;"></div>
   </div>
 
-  <!-- SUMMARY TABLE -->
+  <!-- SUMMARY -->
   <div class="section-label">Active Schedule</div>
   <div class="card">
-    <div class="card-title"><span class="icon">📋</span> Booking Summary</div>
-    <table class="schedule-table" id="summaryTable">
+    <div class="card-title">📋 Summary</div>
+    <table class="summary-table">
       <thead>
-        <tr>
-          <th>Day</th>
-          <th>Preferred Time</th>
-          <th>Players</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
+        <tr><th>Day</th><th>Time</th><th>Players</th><th>Status</th></tr>
       </thead>
       <tbody id="summaryBody">
-        <tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots configured yet</td></tr>
+        <tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots configured</td></tr>
       </tbody>
     </table>
   </div>
 
-  <!-- ACTION BUTTONS -->
-  <div class="btn-row">
-    <button class="btn btn-primary" onclick="armTeeBot()">⚡ Arm TeeBot</button>
-    <button class="btn btn-secondary" onclick="saveConfig()">💾 Save Config</button>
-    <button class="btn btn-secondary" onclick="exportJson()">↗ Export players.json</button>
-    <button class="btn btn-danger btn-sm" onclick="disarmTeeBot()" id="disarmBtn" style="display:none;">✕ Disarm</button>
-  </div>
-
 </main>
 
+<div class="toast" id="toast"></div>
+
 <script>
-// ─── DATA ───────────────────────────────────────────────────────────────────
+// ── CONFIG ─────────────────────────────────────────────────────────────────
+
+const REPO = 'RoryK27/teebot';
 
 const MEMBERS = [
-  { id: "434",  name: "Kirwan, Rory" },
-  { id: "3107", name: "Kirwan, Lisa" },
-  { id: "2022", name: "Carrick, Paul" },
-  { id: "3106", name: "Hennelly, Ronan" },
-  { id: "2833", name: "Kelly, Edward" },
-  { id: "396",  name: "Kelly, Peter 'Seve'" },
-  { id: "433",  name: "Kirwan, Barry" },
-  { id: "912",  name: "Kirwan, Mary" },
-  { id: "3010", name: "Legge, Simon" },
-  { id: "2197", name: "Lynch, Niall" },
-  { id: "590",  name: "Moore, George" },
-  { id: "-2",   name: "Guest" },
+  { id: '434',  name: 'Kirwan, Rory' },
+  { id: '3107', name: 'Kirwan, Lisa' },
+  { id: '2022', name: 'Carrick, Paul' },
+  { id: '3106', name: 'Hennelly, Ronan' },
+  { id: '2833', name: 'Kelly, Edward' },
+  { id: '396',  name: "Kelly, Peter 'Seve'" },
+  { id: '433',  name: 'Kirwan, Barry' },
+  { id: '912',  name: 'Kirwan, Mary' },
+  { id: '3010', name: 'Legge, Simon' },
+  { id: '2197', name: 'Lynch, Niall' },
+  { id: '590',  name: 'Moore, George' },
+  { id: '-2',   name: 'Guest' },
 ];
 
-const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
-const DEFAULT_SLOT = () => ({
-  id: Date.now() + Math.random(),
-  enabled: true,
-  day: "Tuesday",
-  time: "18:10",
-  players: ["Kirwan, Rory", "", "", ""],
-});
+const DAY_TO_NUM = { Monday:0, Tuesday:1, Wednesday:2, Thursday:3, Friday:4, Saturday:5, Sunday:6 };
+
+// ── STATE ──────────────────────────────────────────────────────────────────
 
 let slots = [];
-let armed = false;
-let customRelease = null;
-let armInterval = null;
+let armCountdown = null;
 
-// ─── INIT ────────────────────────────────────────────────────────────────────
+// ── INIT ───────────────────────────────────────────────────────────────────
 
 function init() {
-  const saved = localStorage.getItem("teebot_config");
+  // Load token
+  const savedToken = localStorage.getItem('teebot_pat') || '';
+  document.getElementById('patInput').value = savedToken;
+
+  // Load slots
+  const saved = localStorage.getItem('teebot_slots');
   if (saved) {
-    try {
-      const cfg = JSON.parse(saved);
-      slots = cfg.slots || [DEFAULT_SLOT()];
-      customRelease = cfg.customRelease || null;
-    } catch(e) { slots = [DEFAULT_SLOT()]; }
+    try { slots = JSON.parse(saved); } catch(e) { slots = [defaultSlot()]; }
   } else {
-    slots = [DEFAULT_SLOT()];
+    slots = [defaultSlot()];
   }
-  if (customRelease) {
-    document.getElementById("overrideCheck").checked = true;
-    document.getElementById("overridePanel").style.display = "block";
-    document.getElementById("customRelease").value = customRelease;
+
+  // Load override
+  const ovr = localStorage.getItem('teebot_override');
+  if (ovr) {
+    document.getElementById('overrideCheck').checked = true;
+    document.getElementById('overridePanel').style.display = 'block';
+    document.getElementById('customRelease').value = ovr;
     updateReleaseTag(true);
   }
+
   renderSlots();
   updateSummary();
-  updateFallbackPreview();
 }
 
-// ─── SLOTS ───────────────────────────────────────────────────────────────────
+function defaultSlot() {
+  return {
+    id: Date.now() + Math.random(),
+    enabled: true,
+    day: 'Tuesday',
+    time: '18:10',
+    players: ['Kirwan, Rory', '', '', ''],
+  };
+}
+
+// ── TOKEN ──────────────────────────────────────────────────────────────────
+
+function saveToken() {
+  localStorage.setItem('teebot_pat', document.getElementById('patInput').value.trim());
+}
+
+function toggleTokenVis() {
+  const inp = document.getElementById('patInput');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function getToken() {
+  return document.getElementById('patInput').value.trim();
+}
+
+async function testToken() {
+  const token = getToken();
+  if (!token) { showToast('Paste your token first', true); return; }
+
+  const statusEl = document.getElementById('tokenStatus');
+  statusEl.innerHTML = '<div class="token-status">Verifying...</div>';
+
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}`, {
+      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    if (res.ok) {
+      statusEl.innerHTML = '<div class="token-status ok">✅ Token valid — repo access confirmed</div>';
+      showToast('Token verified successfully');
+    } else {
+      statusEl.innerHTML = `<div class="token-status err">❌ Token invalid or no repo access (${res.status})</div>`;
+      showToast('Token verification failed', true);
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<div class="token-status err">❌ Network error: ${e.message}</div>`;
+  }
+}
+
+// ── SLOTS ──────────────────────────────────────────────────────────────────
 
 function renderSlots() {
-  const grid = document.getElementById("slotsGrid");
-  grid.innerHTML = "";
-  slots.forEach(slot => grid.appendChild(buildSlotCard(slot)));
+  const container = document.getElementById('slotsContainer');
+  container.innerHTML = '';
+  slots.forEach(slot => container.appendChild(buildSlotCard(slot)));
+  localStorage.setItem('teebot_slots', JSON.stringify(slots));
 }
 
 function buildSlotCard(slot) {
-  const div = document.createElement("div");
-  div.className = "slot-card" + (slot.enabled ? " active" : "");
-  div.id = "slot-" + slot.id;
+  const div = document.createElement('div');
+  div.className = 'slot-card' + (slot.enabled ? ' active' : '');
+  div.id = 'slot-' + slot.id;
+
+  const dayOptions = DAYS.map(d =>
+    `<option value="${d}" ${slot.day === d ? 'selected' : ''}>${d}</option>`
+  ).join('');
 
   const memberOptions = MEMBERS.map(m =>
-    `<option value="${m.name}" ${slot.players.includes(m.name) ? "" : ""}>${m.name}</option>`
-  ).join("");
+    `<option value="${m.name}">${m.name}</option>`
+  ).join('');
 
   const playerRows = [0,1,2,3].map(i => {
-    const isFirst = i === 0;
-    const val = slot.players[i] || "";
+    const val = slot.players[i] || '';
+    const disabled = i === 0 ? 'disabled' : '';
     return `
       <div class="player-row">
         <span class="player-num">${i+1}</span>
-        <div class="select-wrapper">
-          <select onchange="updatePlayer('${slot.id}', ${i}, this.value)" ${isFirst ? "disabled" : ""}>
-            <option value="">— empty slot —</option>
-            ${MEMBERS.map(m => `<option value="${m.name}" ${val === m.name ? "selected" : ""}>${m.name}</option>`).join("")}
+        <div class="select-wrap">
+          <select onchange="updatePlayer('${slot.id}',${i},this.value)" ${disabled}>
+            ${i > 0 ? '<option value="">— empty —</option>' : ''}
+            ${MEMBERS.map(m => `<option value="${m.name}" ${val === m.name ? 'selected' : ''}>${m.name}</option>`).join('')}
           </select>
         </div>
-        ${isFirst ? '<span style="width:24px"></span>' : `<button class="btn-remove" onclick="clearPlayer('${slot.id}',${i})" title="Clear">×</button>`}
       </div>`;
-  }).join("");
-
-  const dayOptions = DAYS.map(d =>
-    `<option value="${d}" ${slot.day === d ? "selected" : ""}>${d}</option>`
-  ).join("");
+  }).join('');
 
   div.innerHTML = `
     <div class="slot-header">
-      <div class="slot-day">${slot.day}</div>
-      <label class="slot-toggle">
-        <input type="checkbox" ${slot.enabled ? "checked" : ""} onchange="toggleSlot('${slot.id}', this.checked)">
-        <span class="slider"></span>
-      </label>
+      <div class="slot-title">${slot.day} at ${slot.time}</div>
+      <div class="slot-controls">
+        ${slots.length > 1 ? `<button class="btn btn-secondary btn-sm" onclick="removeSlot('${slot.id}')" style="color:var(--danger);border-color:var(--danger);">Remove</button>` : ''}
+        <label class="toggle">
+          <input type="checkbox" ${slot.enabled ? 'checked' : ''} onchange="toggleSlot('${slot.id}',this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
     </div>
-    <label>Day</label>
-    <div class="select-wrapper">
-      <select onchange="updateSlotDay('${slot.id}', this.value)">
-        ${dayOptions}
-      </select>
+    <div class="form-row cols-2" style="margin-bottom:0.75rem;">
+      <div>
+        <label>Day</label>
+        <div class="select-wrap">
+          <select onchange="updateDay('${slot.id}',this.value)">${dayOptions}</select>
+        </div>
+      </div>
+      <div>
+        <label>Preferred tee time</label>
+        <input type="time" value="${slot.time}" onchange="updateTime('${slot.id}',this.value)">
+      </div>
     </div>
-    <label>Preferred tee time</label>
-    <input type="time" value="${slot.time}" onchange="updateSlotTime('${slot.id}', this.value)">
     <label>Players</label>
-    <div class="players-list">${playerRows}</div>
-    <div style="margin-top:0.75rem;text-align:right;">
-      <button class="btn btn-secondary btn-sm" onclick="removeSlot('${slot.id}')" style="color:var(--danger);border-color:var(--danger);">Remove</button>
-    </div>
+    <div class="players-grid">${playerRows}</div>
   `;
   return div;
 }
 
 function addSlot() {
-  slots.push(DEFAULT_SLOT());
+  slots.push(defaultSlot());
   renderSlots();
   updateSummary();
 }
 
 function removeSlot(id) {
-  if (slots.length === 1) { alert("You need at least one slot."); return; }
   slots = slots.filter(s => String(s.id) !== String(id));
   renderSlots();
   updateSummary();
@@ -654,211 +471,262 @@ function removeSlot(id) {
 
 function toggleSlot(id, val) {
   const s = slots.find(s => String(s.id) === String(id));
-  if (s) { s.enabled = val; }
+  if (s) s.enabled = val;
   renderSlots();
   updateSummary();
 }
 
-function updateSlotDay(id, val) {
+function updateDay(id, val) {
   const s = slots.find(s => String(s.id) === String(id));
-  if (s) { s.day = val; }
+  if (s) s.day = val;
   renderSlots();
   updateSummary();
 }
 
-function updateSlotTime(id, val) {
+function updateTime(id, val) {
   const s = slots.find(s => String(s.id) === String(id));
-  if (s) { s.time = val; }
+  if (s) s.time = val;
+  renderSlots();
   updateSummary();
 }
 
 function updatePlayer(id, idx, val) {
   const s = slots.find(s => String(s.id) === String(id));
-  if (s) { s.players[idx] = val; }
-  updateSummary();
+  if (s) { s.players[idx] = val; localStorage.setItem('teebot_slots', JSON.stringify(slots)); updateSummary(); }
 }
 
-function clearPlayer(id, idx) {
-  const s = slots.find(s => String(s.id) === String(id));
-  if (s) { s.players[idx] = ""; }
-  renderSlots();
-  updateSummary();
-}
-
-// ─── RELEASE TIME ────────────────────────────────────────────────────────────
+// ── RELEASE TIME ───────────────────────────────────────────────────────────
 
 function toggleOverride(cb) {
-  document.getElementById("overridePanel").style.display = cb.checked ? "block" : "none";
+  document.getElementById('overridePanel').style.display = cb.checked ? 'block' : 'none';
   if (!cb.checked) {
-    customRelease = null;
+    localStorage.removeItem('teebot_override');
     updateReleaseTag(false);
-    document.getElementById("releaseDisplay").textContent = "";
   }
-}
-
-function setCustomRelease() {
-  const val = document.getElementById("customRelease").value;
-  const reason = document.getElementById("customReason").value;
-  if (!val) { alert("Please pick a date and time."); return; }
-  customRelease = val;
-  const dt = new Date(val);
-  updateReleaseTag(true);
-  document.getElementById("releaseDisplay").textContent =
-    `Set: ${dt.toLocaleString("en-IE")}${reason ? " — " + reason : ""}`;
 }
 
 function updateReleaseTag(custom) {
-  const tag = document.getElementById("releaseTag");
-  tag.textContent = custom ? "CUSTOM" : "DEFAULT";
-  tag.className = "tag " + (custom ? "tag-custom" : "tag-default");
+  const tag = document.getElementById('releaseTag');
+  const desc = document.getElementById('releaseDesc');
+  if (custom) {
+    const val = document.getElementById('customRelease').value;
+    const dt = val ? new Date(val).toLocaleString('en-IE') : '(not set)';
+    tag.textContent = 'CUSTOM';
+    tag.className = 'tag tag-custom';
+    desc.textContent = `Custom release: ${dt}`;
+    if (val) localStorage.setItem('teebot_override', val);
+  } else {
+    tag.textContent = 'DEFAULT';
+    tag.className = 'tag tag-default';
+    desc.textContent = 'Standard weekly release — TeeBot will run automatically via schedule';
+  }
 }
 
-// ─── FALLBACK PREVIEW ────────────────────────────────────────────────────────
+// ── GITHUB API ─────────────────────────────────────────────────────────────
 
-function updateFallbackPreview() {
-  const window_mins = parseInt(document.getElementById("fallbackWindow").value);
-  const dir = document.getElementById("fallbackDir").value;
-  const base = "18:10";
-  const [bh, bm] = base.split(":").map(Number);
-  const baseMins = bh * 60 + bm;
+async function savePlayersJson() {
+  const token = getToken();
+  if (!token) throw new Error('No token — paste your PAT first');
 
-  let times = [];
-  for (let d = 10; d <= window_mins; d += 10) {
-    if (dir === "after" || dir === "closest") times.push(baseMins + d);
-    if (dir === "before" || dir === "closest") times.push(baseMins - d);
+  const active = slots.filter(s => s.enabled);
+  if (!active.length) throw new Error('No active slots configured');
+
+  const payload = {
+    bookings: active.map(s => ({
+      day: s.day,
+      time: s.time,
+      players: s.players.filter(p => p),
+    }))
+  };
+
+  // Get current file SHA (needed for update)
+  const getRes = await fetch(`https://api.github.com/repos/${REPO}/contents/players.json`, {
+    headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+  });
+
+  let sha = null;
+  if (getRes.ok) {
+    const data = await getRes.json();
+    sha = data.sha;
   }
-  if (dir === "closest") {
-    times.sort((a, b) => Math.abs(a - baseMins) - Math.abs(b - baseMins));
+
+  const content = btoa(JSON.stringify(payload, null, 2));
+  const body = {
+    message: `TeeBot: update players.json ${new Date().toLocaleString('en-IE')}`,
+    content,
+    ...(sha ? { sha } : {}),
+  };
+
+  const putRes = await fetch(`https://api.github.com/repos/${REPO}/contents/players.json`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `token ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!putRes.ok) {
+    const err = await putRes.json();
+    throw new Error(err.message || `GitHub API error ${putRes.status}`);
   }
 
-  const preview = document.getElementById("fallbackPreview");
-  preview.innerHTML = `<span class="time-chip preferred">${base} ★</span>` +
-    times.map(m => {
-      const h = Math.floor(m/60).toString().padStart(2,"0");
-      const min = (m%60).toString().padStart(2,"0");
-      return `<span class="time-chip">${h}:${min}</span>`;
-    }).join("");
+  return payload;
 }
 
-// ─── SUMMARY ─────────────────────────────────────────────────────────────────
+async function triggerWorkflow(workflowFile) {
+  const token = getToken();
+  const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${workflowFile}/dispatches`, {
+    method: 'POST',
+    headers: {
+      Authorization: `token ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ref: 'main' }),
+  });
+
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Workflow trigger failed (${res.status})`);
+  }
+}
+
+// ── ACTIONS ────────────────────────────────────────────────────────────────
+
+function setActionStatus(msg, isError) {
+  const el = document.getElementById('actionStatus');
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--danger)' : 'var(--success)';
+}
+
+async function bookNow() {
+  const btn = document.getElementById('bookNowBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Running...';
+  setActionStatus('Saving config and triggering test workflow...');
+
+  try {
+    await savePlayersJson();
+    setActionStatus('✅ players.json saved — triggering test workflow...');
+
+    await triggerWorkflow('teebot-test.yml');
+    setActionStatus('✅ Test workflow triggered! Check GitHub Actions for results.');
+    showToast('Test booking triggered — check Actions tab');
+
+    document.getElementById('statusMain').textContent = '🏃 Test booking running...';
+    document.getElementById('statusSub').textContent = 'Check GitHub Actions → TeeBot ONE-OFF TEST for results';
+    document.getElementById('statusPulse').className = 'pulse ok';
+
+  } catch(e) {
+    setActionStatus('❌ ' + e.message, true);
+    showToast(e.message, true);
+    document.getElementById('statusPulse').className = 'pulse error';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '▶ Run Test Booking';
+}
+
+async function armTeeBot() {
+  const btn = document.getElementById('armBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Saving...';
+  setActionStatus('Saving booking config to repo...');
+
+  try {
+    const payload = await savePlayersJson();
+    const active = payload.bookings;
+
+    const customReleaseVal = document.getElementById('overrideCheck').checked
+      ? document.getElementById('customRelease').value
+      : null;
+
+    if (customReleaseVal) {
+      localStorage.setItem('teebot_override', customReleaseVal);
+      updateReleaseTag(true);
+    }
+
+    const releaseLabel = customReleaseVal
+      ? new Date(customReleaseVal).toLocaleString('en-IE')
+      : 'Monday 20:30 (automatic schedule)';
+
+    setActionStatus(`✅ Config saved! ${active.length} booking(s) armed for ${releaseLabel}`);
+    showToast('TeeBot armed — config saved to repo');
+
+    document.getElementById('statusMain').textContent = '⚡ ARMED';
+    document.getElementById('statusSub').textContent = `${active.length} booking(s) · Release: ${releaseLabel}`;
+    document.getElementById('statusPulse').className = 'pulse armed';
+
+    // If custom release time, start countdown
+    if (customReleaseVal) {
+      const releaseTime = new Date(customReleaseVal);
+      if (armCountdown) clearInterval(armCountdown);
+      armCountdown = setInterval(async () => {
+        const now = new Date();
+        const diff = releaseTime - now;
+        if (diff <= 0) {
+          clearInterval(armCountdown);
+          document.getElementById('statusSub').textContent = '🚀 Release time reached — triggering booking!';
+          try {
+            await triggerWorkflow('teebot.yml');
+            document.getElementById('statusSub').textContent = '✅ Booking workflow triggered!';
+          } catch(e) {
+            document.getElementById('statusSub').textContent = '❌ Failed to trigger: ' + e.message;
+          }
+          return;
+        }
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        document.getElementById('statusSub').textContent =
+          `${active.length} booking(s) · Release in: ${h}h ${m}m ${s}s`;
+      }, 1000);
+    }
+
+  } catch(e) {
+    setActionStatus('❌ ' + e.message, true);
+    showToast(e.message, true);
+    document.getElementById('statusPulse').className = 'pulse error';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '⚡ Save &amp; Arm';
+}
+
+// ── SUMMARY ────────────────────────────────────────────────────────────────
 
 function updateSummary() {
-  const tbody = document.getElementById("summaryBody");
+  const tbody = document.getElementById('summaryBody');
   if (!slots.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots configured</td></tr>`;
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots</td></tr>';
     return;
   }
   tbody.innerHTML = slots.map(s => {
-    const players = s.players.filter(p => p).join(", ") || "—";
+    const players = s.players.filter(p => p).join(', ') || '—';
     const status = s.enabled
-      ? `<span class="tag tag-active">ACTIVE</span>`
-      : `<span class="tag tag-default">OFF</span>`;
+      ? '<span class="tag tag-armed">ACTIVE</span>'
+      : '<span class="tag tag-default">OFF</span>';
     return `<tr>
       <td><strong>${s.day}</strong></td>
       <td style="font-family:'DM Mono',monospace;">${s.time}</td>
-      <td style="font-size:0.8rem;">${players}</td>
+      <td style="font-size:0.78rem;">${players}</td>
       <td>${status}</td>
-      <td><button class="btn btn-secondary btn-sm" onclick="editSlotScroll('${s.id}')">Edit</button></td>
     </tr>`;
-  }).join("");
+  }).join('');
 }
 
-function editSlotScroll(id) {
-  const el = document.getElementById("slot-" + id);
-  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+// ── TOAST ──────────────────────────────────────────────────────────────────
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '') + ' show';
+  setTimeout(() => t.className = 'toast' + (isError ? ' error' : ''), 3500);
 }
 
-// ─── ARM / DISARM ────────────────────────────────────────────────────────────
-
-function armTeeBot() {
-  const active = slots.filter(s => s.enabled);
-  if (!active.length) { alert("No active slots to arm."); return; }
-
-  armed = true;
-  saveConfig();
-
-  const releaseTime = customRelease
-    ? new Date(customRelease)
-    : nextMondayAt2030();
-
-  document.getElementById("statusMain").textContent = "⚡ ARMED — Waiting for tee sheet release";
-  document.getElementById("statusSub").textContent =
-    `Release: ${releaseTime.toLocaleString("en-IE")} · ${active.length} slot(s) queued`;
-  document.getElementById("statusPulse").classList.add("armed");
-  document.getElementById("disarmBtn").style.display = "inline-flex";
-  document.getElementById("releaseTag").textContent = "ARMED";
-  document.getElementById("releaseTag").className = "tag tag-active";
-
-  // Countdown ticker
-  if (armInterval) clearInterval(armInterval);
-  armInterval = setInterval(() => {
-    const now = new Date();
-    const diff = releaseTime - now;
-    if (diff <= 0) {
-      clearInterval(armInterval);
-      document.getElementById("statusSub").textContent = "🚀 Release time reached — booking in progress!";
-      return;
-    }
-    const h = Math.floor(diff / 3600000);
-    const m = Math.floor((diff % 3600000) / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
-    document.getElementById("statusSub").textContent =
-      `Release in: ${h}h ${m}m ${s}s · ${active.length} slot(s) queued`;
-  }, 1000);
-}
-
-function disarmTeeBot() {
-  armed = false;
-  if (armInterval) clearInterval(armInterval);
-  document.getElementById("statusMain").textContent = "Idle — no booking armed";
-  document.getElementById("statusSub").textContent = "Configure your bookings below and click Arm TeeBot";
-  document.getElementById("statusPulse").classList.remove("armed");
-  document.getElementById("disarmBtn").style.display = "none";
-  updateReleaseTag(!!customRelease);
-}
-
-function nextMondayAt2030() {
-  const now = new Date();
-  const d = new Date(now);
-  const day = d.getDay(); // 0=Sun
-  const daysToMon = (1 - day + 7) % 7 || 7;
-  d.setDate(d.getDate() + daysToMon);
-  d.setHours(20, 30, 0, 0);
-  return d;
-}
-
-// ─── SAVE / EXPORT ───────────────────────────────────────────────────────────
-
-function saveConfig() {
-  localStorage.setItem("teebot_config", JSON.stringify({ slots, customRelease }));
-  const btn = event?.target;
-  if (btn) {
-    const orig = btn.textContent;
-    btn.textContent = "✓ Saved";
-    setTimeout(() => btn.textContent = orig, 1500);
-  }
-}
-
-function exportJson() {
-  // Export players.json for the first enabled slot (or all slots)
-  const active = slots.filter(s => s.enabled);
-  if (!active.length) { alert("No active slots to export."); return; }
-
-  // Build one players.json per slot
-  const exports = active.map(s => ({
-    day: s.day,
-    time: s.time,
-    players: s.players.filter(p => p),
-  }));
-
-  const blob = new Blob([JSON.stringify({ bookings: exports }, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "players.json";
-  a.click();
-}
-
-// ─── BOOT ────────────────────────────────────────────────────────────────────
+// ── BOOT ───────────────────────────────────────────────────────────────────
 init();
 </script>
 </body>
