@@ -1,15 +1,16 @@
-name: TeeBot - Book Tee Times
+name: TeeBot - Auto Book Tee Time
 
 on:
   schedule:
-    # Every Monday at 8:28 PM BST (19:28 UTC in summer)
-    - cron: '28 19 * * 1'
-  workflow_dispatch:  # Manual trigger for testing
+    # Ireland is UTC in winter, UTC+1 in summer (last Sun Mar - last Sun Oct)
+    # We run BOTH crons — only one will be near 20:30 Irish time
+    - cron: '29 20 * * 1'   # 20:29 UTC = 20:29 Irish winter time
+    - cron: '29 19 * * 1'   # 19:29 UTC = 20:29 Irish summer time (UTC+1)
+  workflow_dispatch:
 
 jobs:
   book-tee-time:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,19 +28,19 @@ jobs:
 
       - name: Run TeeBot
         env:
-          BRS_URL:   ${{ secrets.BRS_URL }}
           BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
           BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python book_tee_time.py
 
-      - name: Upload confirmation screenshots
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: booking-confirmations
+          name: teebot-screenshots-${{ github.run_id }}
           path: |
             confirmation_*.png
             error_*.png
-          retention-days: 14
+            debug_*.png
+          retention-days: 7
