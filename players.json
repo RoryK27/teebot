@@ -18,7 +18,10 @@
       "date": "2026-05-05",
       "time": "17:40",
       "players": [
-        "Kirwan, Rory"
+        "Kirwan, Rory",
+        "Kirwan, Lisa",
+        "Carrick, Paul",
+        "Legge, Simon"
       ],
       "fallback_window": 10,
       "fallback_interval": 10
