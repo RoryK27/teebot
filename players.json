@@ -1,8 +1,8 @@
 {
   "bookings": [
     {
-      "day": "Monday",
-      "date": "2026-05-04",
+      "day": "Wednesday",
+      "date": "2026-05-06",
       "time": "18:00",
       "players": [
         "Kirwan, Rory",
@@ -11,6 +11,16 @@
         "Guest"
       ],
       "fallback_window": 20,
+      "fallback_interval": 10
+    },
+    {
+      "day": "Tuesday",
+      "date": "2026-05-05",
+      "time": "18:10",
+      "players": [
+        "Kirwan, Rory"
+      ],
+      "fallback_window": 30,
       "fallback_interval": 10
     }
   ]
