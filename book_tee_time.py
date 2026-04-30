@@ -1,8 +1,9 @@
 """
 TeeBot - Beaverstown Golf Club BRS - PRODUCTION
-Speed-optimised: logs in early, navigates to tee sheet before release,
-then hammers refresh until BOOK NOW appears and clicks immediately.
-Handles multiple bookings in parallel.
+Each GitHub Actions job runs this script with a different BOOKING_INDEX,
+so every booking runs as a completely independent parallel job.
+Speed-optimised: logs in early, sits on tee sheet, hammers refresh,
+clicks BOOK NOW the instant it appears.
 """
 
 import asyncio, os, json, urllib.request
@@ -12,10 +13,11 @@ from playwright.async_api import async_playwright
 BRS_LOGIN_URL  = "https://members.brsgolf.com/beaverstown"
 TEE_SHEET_BASE = "https://members.brsgolf.com/beaverstown/tee-sheet/1"
 
-BRS_EMAIL    = os.environ["BRS_EMAIL"]
-BRS_PASSWORD = os.environ["BRS_PASSWORD"]
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-REPO         = os.environ.get("GITHUB_REPOSITORY", "")
+BRS_EMAIL      = os.environ["BRS_EMAIL"]
+BRS_PASSWORD   = os.environ["BRS_PASSWORD"]
+GITHUB_TOKEN   = os.environ.get("GITHUB_TOKEN", "")
+REPO           = os.environ.get("GITHUB_REPOSITORY", "")
+BOOKING_INDEX  = int(os.environ.get("BOOKING_INDEX", "0"))
 
 PLAYER_IDS = {
     "Kirwan, Rory":        "434",
@@ -32,18 +34,20 @@ PLAYER_IDS = {
     "Guest":               "-2",
 }
 
-# How long before release to start waiting on the tee sheet (seconds)
+# How long before release to be sitting on the tee sheet (seconds)
 PRE_RELEASE_WAIT_SECS = 90
-# How often to refresh while waiting for BOOK NOW to appear (ms)
-REFRESH_INTERVAL_MS   = 500
-# Give up waiting after this many seconds past release time
+# Refresh interval while waiting for BOOK NOW (seconds)
+REFRESH_INTERVAL_SECS = 0.5
+# Give up this many seconds after release time
 TIMEOUT_AFTER_RELEASE = 60
 
 
-def load_bookings():
+def load_booking():
+    """Load the specific booking for this job's BOOKING_INDEX."""
     if not GITHUB_TOKEN or not REPO:
-        print("  ⚠️  No GITHUB_TOKEN/REPO")
-        return []
+        print(f"  ⚠️  No GITHUB_TOKEN/REPO set")
+        return None
+
     url = f"https://api.github.com/repos/{REPO}/contents/players.json"
     req = urllib.request.Request(url, headers={
         "Authorization": f"token {GITHUB_TOKEN}",
@@ -53,18 +57,21 @@ def load_bookings():
         with urllib.request.urlopen(req) as resp:
             data = json.loads(resp.read().decode())
             bookings = data.get("bookings", [])
-            print(f"  Loaded {len(bookings)} booking(s) from players.json")
-            return bookings
+            print(f"  players.json has {len(bookings)} booking(s) — this job is index {BOOKING_INDEX}")
+
+            if BOOKING_INDEX >= len(bookings):
+                print(f"  ℹ️  No booking at index {BOOKING_INDEX} — nothing to do")
+                return None
+
+            return bookings[BOOKING_INDEX]
     except Exception as e:
         print(f"  ⚠️  Could not load players.json: {e}")
-        return []
+        return None
 
 
 def get_target_date(booking: dict) -> datetime:
-    """Get the target date from ISO date string or day name."""
     if "date" in booking:
         return datetime.strptime(booking["date"], "%Y-%m-%d")
-    # Fall back to next occurrence of day name
     days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
     dow = days.index(booking["day"])
     today = datetime.now()
@@ -82,7 +89,6 @@ def build_fallback_times(preferred: str, window: int, interval: int) -> list:
                 t = f"{mins//60:02d}:{mins%60:02d}"
                 if t not in times:
                     times.append(t)
-    # Sort by closeness to preferred
     times[1:] = sorted(times[1:], key=lambda t: abs(
         int(t.split(':')[0])*60 + int(t.split(':')[1]) - base
     ))
@@ -99,34 +105,30 @@ async def login(page):
     await page.wait_for_load_state("domcontentloaded")
     await page.wait_for_timeout(2000)
     if "beaverstown" not in page.url:
-        raise Exception("Login failed")
+        raise Exception("Login failed — check BRS_EMAIL / BRS_PASSWORD secrets")
     print("  ✅ Logged in")
 
 
 async def navigate_to_date(page, target_dt: datetime):
     url = f"{TEE_SHEET_BASE}/{target_dt.strftime('%Y/%m/%d')}"
-    print(f"  Navigating to {target_dt.strftime('%A %d %B')} tee sheet...")
     await page.goto(url, wait_until="domcontentloaded")
-    await page.wait_for_timeout(2000)
-    print(f"  ✅ On tee sheet for {target_dt.strftime('%A %d %B')}")
+    await page.wait_for_timeout(1500)
+    print(f"  ✅ On tee sheet: {target_dt.strftime('%A %d %B')}")
 
 
 async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
-                              release_dt: datetime, booking_label: str) -> bool:
+                              release_dt: datetime) -> bool:
     """
-    Rapidly refresh the tee sheet until BOOK NOW appears for the target time,
-    then click it immediately. Falls back to adjacent times if preferred is taken.
+    Sit on the tee sheet and refresh rapidly until BOOK NOW appears,
+    then click immediately.
     """
-    print(f"\n  [{booking_label}] Waiting for release at {release_dt.strftime('%H:%M:%S')}...")
-
     deadline = release_dt + timedelta(seconds=TIMEOUT_AFTER_RELEASE)
     attempt = 0
 
-    while datetime.now() < deadline:
-        now = datetime.now()
-        attempt += 1
+    print(f"  Hammering refresh until {release_dt.strftime('%H:%M:%S')} release...")
 
-        # Reload page to get fresh content
+    while datetime.now() < deadline:
+        attempt += 1
         try:
             await page.reload(wait_until="domcontentloaded", timeout=8000)
         except Exception:
@@ -135,49 +137,51 @@ async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
 
         content = await page.content()
 
-        # Check each time in fallback order
         for try_time in fallback_times:
             if try_time not in content:
                 continue
-
-            # Look for BOOK NOW in that row
             try:
                 btn = page.locator(
                     f'tr:has-text("{try_time}") a:has-text("BOOK NOW")'
                 ).first
                 if await btn.count() > 0 and await btn.is_visible():
-                    print(f"  [{booking_label}] 🚀 BOOK NOW visible for {try_time} — clicking NOW! (attempt {attempt})")
+                    elapsed = (datetime.now() - release_dt).total_seconds()
+                    print(f"  🚀 BOOK NOW at {try_time}! Clicking (attempt {attempt}, {elapsed:+.1f}s from release)")
                     await btn.click(timeout=3000)
                     await page.wait_for_load_state("domcontentloaded")
                     await page.wait_for_timeout(1500)
 
-                    # Verify booking form opened
-                    if await page.locator('text="Booking Details"').count() > 0:
-                        print(f"  [{booking_label}] ✅ Booking form open for {try_time}")
-                        return True
-
-                    # Check if it was already booked
+                    # Check for already booked modal
                     if await page.locator('text="already booked"').count() > 0:
-                        print(f"  [{booking_label}] ✗ {try_time} already taken — trying next")
+                        print(f"  ✗ {try_time} already fully booked — trying next")
                         for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
                             try:
                                 await page.locator(sel).first.click(timeout=1500)
+                                await page.wait_for_timeout(500)
                                 break
                             except: pass
                         continue
-            except Exception as e:
+
+                    if await page.locator('text="Booking Details"').count() > 0:
+                        print(f"  ✅ Booking form open for {try_time}")
+                        return True
+            except Exception:
                 continue
 
-        secs_to_release = (release_dt - now).total_seconds()
-        if secs_to_release > 0:
-            print(f"  [{booking_label}] Waiting... {secs_to_release:.0f}s to release (attempt {attempt})")
-            await asyncio.sleep(REFRESH_INTERVAL_MS / 1000)
+        secs_to_release = (release_dt - datetime.now()).total_seconds()
+        if secs_to_release > 5:
+            print(f"  ⏳ {secs_to_release:.0f}s to release... (attempt {attempt})")
+            await asyncio.sleep(REFRESH_INTERVAL_SECS)
+        elif secs_to_release > 0:
+            # Very close to release — refresh as fast as possible
+            await asyncio.sleep(0.1)
         else:
-            secs_past = -secs_to_release
-            print(f"  [{booking_label}] +{secs_past:.0f}s past release, attempt {attempt} — still refreshing")
+            secs_past = abs(secs_to_release)
+            if attempt % 5 == 0:
+                print(f"  ⏳ +{secs_past:.0f}s past release, attempt {attempt}")
             await asyncio.sleep(0.3)
 
-    print(f"  [{booking_label}] ❌ Timed out — no slot secured")
+    print(f"  ❌ Timed out — no slot found after {TIMEOUT_AFTER_RELEASE}s")
     return False
 
 
@@ -186,6 +190,7 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
     if not member_id:
         print(f"    ⚠️  No member ID for '{player_name}'")
         return False
+
     select_id = f"member_booking_form_player_{slot_num}"
     result = await page.evaluate(f"""
         () => {{
@@ -205,23 +210,26 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
             return 'OK';
         }}
     """)
+
     if 'ERROR' in result:
         print(f"    ⚠️  Slot {slot_num}: {result}")
         return False
+
     await page.wait_for_timeout(300)
     print(f"    ✅ Player {slot_num}: {player_name}")
     return True
 
 
 async def fill_and_confirm(page, players: list, label: str) -> bool:
-    print(f"  [{label}] Filling players...")
+    print(f"  Filling {len([p for p in players[1:4] if p])} additional players...")
     await page.wait_for_timeout(400)
+
     for i, player in enumerate(players[1:4], start=2):
         if player:
             await set_player_via_select2(page, i, player)
             await page.wait_for_timeout(200)
 
-    await page.screenshot(path=f"debug_{label}_players.png", full_page=True)
+    await page.screenshot(path=f"debug_players_{label}.png", full_page=True)
 
     for sel in [
         'button:has-text("Create Booking")',
@@ -235,91 +243,75 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
             await page.screenshot(path=f"confirmation_{label}.png", full_page=True)
-            print(f"  [{label}] ✅ BOOKING CONFIRMED!")
+            print(f"  ✅ BOOKING CONFIRMED!")
             return True
         except: continue
 
-    await page.screenshot(path=f"error_{label}_noconfirm.png", full_page=True)
-    print(f"  [{label}] ❌ Could not confirm booking")
+    await page.screenshot(path=f"error_noconfirm_{label}.png", full_page=True)
+    print(f"  ❌ Could not confirm booking")
     return False
 
 
-async def run_booking(browser, booking: dict, release_dt: datetime):
-    """Run a single booking in its own browser page."""
-    day     = booking.get("day", "?")
-    time    = booking["time"]
-    players = booking["players"][:4]
-    window  = booking.get("fallback_window", 30)
-    interval= booking.get("fallback_interval", 10)
-    label   = f"{day}-{time.replace(':','')}"
-
-    fallback_times = build_fallback_times(time, window, interval)
-    target_dt = get_target_date(booking)
-
-    print(f"\n{'='*54}")
-    print(f"  [{label}] {day} {target_dt.strftime('%d %B')} — want {time}")
-    print(f"  [{label}] Fallbacks: {fallback_times}")
-    print(f"  [{label}] Players: {', '.join(p for p in players if p)}")
-    print(f"{'='*54}")
-
-    page = await browser.new_page(viewport={"width": 1280, "height": 900})
-
-    try:
-        await login(page)
-        await navigate_to_date(page, target_dt)
-
-        # Wait until PRE_RELEASE_WAIT_SECS before release, then start hammering
-        wait_until = release_dt - timedelta(seconds=PRE_RELEASE_WAIT_SECS)
-        now = datetime.now()
-        if now < wait_until:
-            secs = (wait_until - now).total_seconds()
-            print(f"  [{label}] Waiting {secs:.0f}s then moving to tee sheet...")
-            await asyncio.sleep(secs)
-            await navigate_to_date(page, target_dt)
-
-        booked = await wait_and_grab_slot(page, time, fallback_times, release_dt, label)
-
-        if booked:
-            await fill_and_confirm(page, players, label)
-        else:
-            await page.screenshot(path=f"error_{label}_no_slot.png", full_page=True)
-
-    except Exception as e:
-        print(f"  [{label}] ❌ Error: {e}")
-        try: await page.screenshot(path=f"error_{label}_crash.png", full_page=True)
-        except: pass
-    finally:
-        await page.close()
-
-
 async def main():
-    bookings = load_bookings()
-    if not bookings:
-        print("No bookings in players.json — nothing to do")
+    booking = load_booking()
+    if not booking:
+        print(f"  Nothing to do for index {BOOKING_INDEX} — exiting cleanly")
         return
 
-    # Determine release time
-    # GitHub Actions runs this at the scheduled time, so release = NOW
-    release_dt = datetime.now()
+    day      = booking.get("day", "?")
+    time     = booking["time"]
+    players  = booking["players"][:4]
+    window   = int(booking.get("fallback_window", 30))
+    interval = int(booking.get("fallback_interval", 10))
+
+    target_dt      = get_target_date(booking)
+    fallback_times = build_fallback_times(time, window, interval)
+    release_dt     = datetime.now()  # workflow fires at release time
+    label          = f"{day.lower()[:3]}_{time.replace(':','')}"
 
     print("=" * 54)
-    print("  TeeBot PRODUCTION — Beaverstown Golf Club")
-    print(f"  Run time   : {release_dt.strftime('%A %d %B %Y %H:%M:%S')}")
-    print(f"  Bookings   : {len(bookings)}")
-    print(f"  Strategy   : Log in early, wait on tee sheet, fire immediately")
+    print(f"  TeeBot Job #{BOOKING_INDEX + 1} — Beaverstown Golf Club")
+    print(f"  Date    : {target_dt.strftime('%A %d %B %Y')}")
+    print(f"  Want    : {time}  |  Fallbacks: {fallback_times[1:4]}")
+    print(f"  Players : {', '.join(p for p in players if p)}")
+    print(f"  Release : {release_dt.strftime('%H:%M:%S')} (now)")
     print("=" * 54)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
+        page    = await browser.new_page(viewport={"width": 1280, "height": 900})
 
-        # Run all bookings in parallel
-        tasks = [run_booking(browser, b, release_dt) for b in bookings]
-        await asyncio.gather(*tasks)
+        try:
+            await login(page)
+
+            # Navigate to tee sheet early and sit there
+            wait_until = release_dt - timedelta(seconds=PRE_RELEASE_WAIT_SECS)
+            now = datetime.now()
+            if now < wait_until:
+                secs = (wait_until - now).total_seconds()
+                print(f"  Waiting {secs:.0f}s then navigating to tee sheet early...")
+                await asyncio.sleep(secs)
+
+            await navigate_to_date(page, target_dt)
+            await page.screenshot(path=f"debug_teesheet_{label}.png", full_page=True)
+
+            # Hammer refresh until BOOK NOW appears
+            booked = await wait_and_grab_slot(page, time, fallback_times, release_dt)
+
+            if booked:
+                await fill_and_confirm(page, players, label)
+            else:
+                await page.screenshot(path=f"error_noslot_{label}.png", full_page=True)
+
+        except Exception as e:
+            print(f"  ❌ Fatal error: {e}")
+            try: await page.screenshot(path=f"error_crash_{label}.png", full_page=True)
+            except: pass
 
         await browser.close()
 
     print("\n" + "=" * 54)
-    print("  TeeBot complete — check artifacts for screenshots")
+    print(f"  Job #{BOOKING_INDEX + 1} complete")
     print("=" * 54)
 
 
