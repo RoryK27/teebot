@@ -423,6 +423,17 @@ function buildSlotCard(slot) {
     </div>
     <label>Players</label>
     <div class="players-grid">${playerRows}</div>
+    <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+      <label>If preferred time is taken, try within</label>
+      <div class="select-wrap" style="width:180px;">
+        <select onchange="updateFallback('${slot.id}','window',this.value)">
+          <option value="10" ${(slot.fallbackWindow||30)===10?'selected':''}>±10 minutes</option>
+          <option value="20" ${(slot.fallbackWindow||30)===20?'selected':''}>±20 minutes</option>
+          <option value="30" ${(slot.fallbackWindow||30)===30||!slot.fallbackWindow?'selected':''}>±30 minutes</option>
+          <option value="60" ${(slot.fallbackWindow||30)===60?'selected':''}>±60 minutes</option>
+        </select>
+      </div>
+    </div>
   `;
   return div;
 }
@@ -470,6 +481,8 @@ async function savePlayersJson() {
       date: s.iso,
       time: s.time,
       players: s.players.filter(p => p),
+        fallback_window: s.fallbackWindow || 30,
+        fallback_interval: 10,
     }))
   };
 
@@ -574,6 +587,11 @@ async function armTeeBot() {
 }
 
 // ── SUMMARY ────────────────────────────────────────────────────────────────
+
+function updateFallback(id, key, val) {
+  const s = slots.find(s => String(s.id) === String(id));
+  if (s) { s.fallbackWindow = parseInt(val); localStorage.setItem('teebot_slots', JSON.stringify(slots)); }
+}
 
 function updateSummary() {
   const tbody = document.getElementById('summaryBody');
