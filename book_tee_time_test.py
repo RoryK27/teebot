@@ -15,6 +15,7 @@ BRS_EMAIL      = os.environ["BRS_EMAIL"]
 BRS_PASSWORD   = os.environ["BRS_PASSWORD"]
 GITHUB_TOKEN   = os.environ.get("GITHUB_TOKEN", "")
 REPO           = os.environ.get("GITHUB_REPOSITORY", "")
+BOOKING_INDEX  = int(os.environ.get("BOOKING_INDEX", "0"))
 
 # Member IDs from BRS select options
 PLAYER_IDS = {
@@ -55,8 +56,11 @@ def load_booking():
             if not bookings:
                 print("  ⚠️  No bookings found in players.json")
                 return None
-            print(f"  Loaded {len(bookings)} booking(s) — running first one")
-            return bookings[0]
+            print(f"  Loaded {len(bookings)} booking(s) — this job is index {BOOKING_INDEX}")
+            if BOOKING_INDEX >= len(bookings):
+                print(f"  ℹ️  No booking at index {BOOKING_INDEX} — nothing to do")
+                return None
+            return bookings[BOOKING_INDEX]
     except Exception as e:
         print(f"  ⚠️  Could not load players.json: {e}")
         return None
