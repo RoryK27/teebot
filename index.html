@@ -475,14 +475,20 @@ async function savePlayersJson() {
   const active = slots.filter(s => s.enabled);
   if (!active.length) throw new Error('No active slots configured');
 
+  const customVal = document.getElementById('overrideCheck').checked
+    ? document.getElementById('customRelease').value
+    : null;
+
   const payload = {
+    release_type: customVal ? 'custom' : 'default',
+    release_time: customVal || null,
     bookings: active.map(s => ({
       day: s.dayName,
       date: s.iso,
       time: s.time,
       players: s.players.filter(p => p),
-        fallback_window: s.fallbackWindow || 30,
-        fallback_interval: 10,
+      fallback_window: s.fallbackWindow || 30,
+      fallback_interval: 10,
     }))
   };
 
@@ -549,7 +555,9 @@ async function armTeeBot() {
     const active = payload.bookings;
     const customVal = document.getElementById('overrideCheck').checked ? document.getElementById('customRelease').value : null;
     if (customVal) updateReleaseTag(true);
-    const releaseLabel = customVal ? new Date(customVal).toLocaleString('en-IE') : 'Monday 20:30 (automatic)';
+    const releaseLabel = customVal
+      ? new Date(customVal).toLocaleString('en-IE') + ' (scheduler will fire automatically)'
+      : 'Monday 20:30 (automatic schedule)';
     setActionStatus(`✅ Armed! ${active.length} booking(s) ready · Release: ${releaseLabel}`);
     showToast('TeeBot armed — config saved');
     document.getElementById('statusMain').textContent = '⚡ ARMED';
@@ -558,26 +566,8 @@ async function armTeeBot() {
     document.getElementById('releaseTag').textContent = 'ARMED';
     document.getElementById('releaseTag').className = 'tag tag-armed';
 
-    if (customVal) {
-      if (armCountdown) clearInterval(armCountdown);
-      armCountdown = setInterval(async () => {
-        const diff = new Date(customVal) - new Date();
-        if (diff <= 0) {
-          clearInterval(armCountdown);
-          document.getElementById('statusSub').textContent = '🚀 Triggering booking now!';
-          try {
-            await triggerWorkflow('teebot.yml');
-            document.getElementById('statusSub').textContent = '✅ Production workflow triggered!';
-            showToast('Booking workflow triggered!');
-          } catch(e) {
-            document.getElementById('statusSub').textContent = '❌ ' + e.message;
-          }
-          return;
-        }
-        const h=Math.floor(diff/3600000), m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
-        document.getElementById('statusSub').textContent = `${active.length} booking(s) · Release in: ${h}h ${m}m ${s}s`;
-      }, 1000);
-    }
+    // GitHub scheduler.yml now handles firing at the custom time automatically
+    // No need to keep the browser open
   } catch(e) {
     setActionStatus('❌ ' + e.message, true);
     showToast(e.message, true);
