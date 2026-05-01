@@ -116,72 +116,93 @@ async def navigate_to_date(page, target_dt: datetime):
     print(f"  ✅ On tee sheet: {target_dt.strftime('%A %d %B')}")
 
 
+async def try_click_book_now(page, fallback_times: list) -> str | None:
+    """
+    Check current page content and click BOOK NOW if visible for any fallback time.
+    Returns the booked time string if successful, None otherwise.
+    """
+    content = await page.content()
+    for try_time in fallback_times:
+        if try_time not in content:
+            continue
+        try:
+            btn = page.locator(
+                f'tr:has-text("{try_time}") a:has-text("BOOK NOW")'
+            ).first
+            if await btn.count() > 0 and await btn.is_visible():
+                print(f"  🚀 BOOK NOW visible for {try_time} — clicking!")
+                await btn.click(timeout=3000)
+                await page.wait_for_load_state("domcontentloaded")
+                await page.wait_for_timeout(1500)
+
+                # Check for already booked modal
+                if await page.locator('text="already booked"').count() > 0:
+                    print(f"  ✗ {try_time} already fully booked — trying next")
+                    for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
+                        try:
+                            await page.locator(sel).first.click(timeout=1500)
+                            await page.wait_for_timeout(500)
+                            break
+                        except: pass
+                    continue
+
+                if await page.locator('text="Booking Details"').count() > 0:
+                    print(f"  ✅ Booking form open for {try_time}")
+                    return try_time
+        except Exception as e:
+            print(f"  ⚠️  Error trying {try_time}: {e}")
+            continue
+    return None
+
+
 async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
                               release_dt: datetime) -> bool:
     """
-    Sit on the tee sheet and refresh rapidly until BOOK NOW appears,
-    then click immediately.
+    First check if BOOK NOW is already available (slots already released).
+    If not, hammer refresh until release time, then grab immediately.
     """
     deadline = release_dt + timedelta(seconds=TIMEOUT_AFTER_RELEASE)
     attempt = 0
 
-    print(f"  Hammering refresh until {release_dt.strftime('%H:%M:%S')} release...")
+    # Check immediately on first load — slots may already be available
+    print(f"  Checking if slots already available...")
+    booked_time = await try_click_book_now(page, fallback_times)
+    if booked_time:
+        return True
+
+    secs_to_release = (release_dt - datetime.now()).total_seconds()
+    if secs_to_release > 0:
+        print(f"  ⏳ {secs_to_release:.0f}s to release — hammering refresh...")
+    else:
+        print(f"  Slots not yet visible — refreshing...")
 
     while datetime.now() < deadline:
         attempt += 1
         try:
             await page.reload(wait_until="domcontentloaded", timeout=8000)
         except Exception:
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.2)
             continue
 
-        content = await page.content()
-
-        for try_time in fallback_times:
-            if try_time not in content:
-                continue
-            try:
-                btn = page.locator(
-                    f'tr:has-text("{try_time}") a:has-text("BOOK NOW")'
-                ).first
-                if await btn.count() > 0 and await btn.is_visible():
-                    elapsed = (datetime.now() - release_dt).total_seconds()
-                    print(f"  🚀 BOOK NOW at {try_time}! Clicking (attempt {attempt}, {elapsed:+.1f}s from release)")
-                    await btn.click(timeout=3000)
-                    await page.wait_for_load_state("domcontentloaded")
-                    await page.wait_for_timeout(1500)
-
-                    # Check for already booked modal
-                    if await page.locator('text="already booked"').count() > 0:
-                        print(f"  ✗ {try_time} already fully booked — trying next")
-                        for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
-                            try:
-                                await page.locator(sel).first.click(timeout=1500)
-                                await page.wait_for_timeout(500)
-                                break
-                            except: pass
-                        continue
-
-                    if await page.locator('text="Booking Details"').count() > 0:
-                        print(f"  ✅ Booking form open for {try_time}")
-                        return True
-            except Exception:
-                continue
+        booked_time = await try_click_book_now(page, fallback_times)
+        if booked_time:
+            elapsed = (datetime.now() - release_dt).total_seconds()
+            print(f"  ✅ Grabbed {booked_time} at {elapsed:+.1f}s from release (attempt {attempt})")
+            return True
 
         secs_to_release = (release_dt - datetime.now()).total_seconds()
         if secs_to_release > 5:
-            print(f"  ⏳ {secs_to_release:.0f}s to release... (attempt {attempt})")
+            print(f"  ⏳ {secs_to_release:.0f}s to release (attempt {attempt})")
             await asyncio.sleep(REFRESH_INTERVAL_SECS)
         elif secs_to_release > 0:
-            # Very close to release — refresh as fast as possible
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)  # Very close — go as fast as possible
         else:
             secs_past = abs(secs_to_release)
             if attempt % 5 == 0:
                 print(f"  ⏳ +{secs_past:.0f}s past release, attempt {attempt}")
             await asyncio.sleep(0.3)
 
-    print(f"  ❌ Timed out — no slot found after {TIMEOUT_AFTER_RELEASE}s")
+    print(f"  ❌ Timed out — no slot found after {TIMEOUT_AFTER_RELEASE}s past release")
     return False
 
 
