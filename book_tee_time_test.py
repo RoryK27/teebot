@@ -131,16 +131,15 @@ async def try_book_time(page, target_time: str) -> bool:
         print(f"  ⏭  {target_time} not on page")
         return False
 
-    # Method 1: row selector
+    # Method 1: visible BOOK NOW in the correct row
     try:
         btn = page.locator(f'tr:has-text("{target_time}") a:has-text("BOOK NOW")').first
-        if await btn.count() > 0:
+        if await btn.count() > 0 and await btn.is_visible():
             await btn.click(timeout=5000)
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
             await page.screenshot(path="debug_06_after_book_now.png", full_page=True)
 
-            # Check for already booked modal
             if await page.locator('text="already booked"').count() > 0:
                 print(f"  ✗  {target_time} already fully booked")
                 for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
@@ -157,14 +156,16 @@ async def try_book_time(page, target_time: str) -> bool:
     except Exception as e:
         print(f"  Method 1 failed: {e}")
 
-    # Method 2: JS row scan
+    # Method 2: JS fallback — only click BOOK NOW links, not any button
     try:
         clicked = await page.evaluate(f"""
             () => {{
                 for (const row of document.querySelectorAll('tr')) {{
                     if (row.textContent.includes('{target_time}')) {{
-                        const btn = row.querySelector('a, button');
-                        if (btn) {{ btn.click(); return true; }}
+                        const btn = row.querySelector('a');
+                        if (btn && btn.textContent.includes('BOOK NOW')) {{
+                            btn.click(); return true;
+                        }}
                     }}
                 }}
                 return false;
@@ -180,7 +181,6 @@ async def try_book_time(page, target_time: str) -> bool:
         print(f"  Method 2 failed: {e}")
 
     return False
-
 
 async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
     member_id = PLAYER_IDS.get(player_name)
