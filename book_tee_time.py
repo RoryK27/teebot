@@ -231,6 +231,28 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
 
     await page.screenshot(path=f"debug_players_{label}.png", full_page=True)
 
+    # Dismiss any error/warning modals before confirming
+    # (e.g. player has insufficient competition purse funds)
+    print("  Checking for any error modals before confirming...")
+    for modal_sel in [
+        'button:has-text("OK")',
+        'button:has-text("Close")',
+        'button:has-text("Dismiss")',
+        '[class*="modal"] button',
+        '[class*="alert"] button',
+        '[class*="error"] button',
+    ]:
+        try:
+            modal_btn = page.locator(modal_sel).first
+            if await modal_btn.count() > 0 and await modal_btn.is_visible():
+                modal_text = await page.locator('[class*="modal"], [class*="alert"], [class*="error"]').first.text_content()
+                print(f"  ⚠️  Modal dismissed: {(modal_text or '').strip()[:100]}")
+                await modal_btn.click(timeout=2000)
+                await page.wait_for_timeout(500)
+        except: pass
+
+    await page.screenshot(path=f"debug_before_confirm_{label}.png", full_page=True)
+
     for sel in [
         'button:has-text("Create Booking")',
         'button:has-text("CREATE BOOKING")',
@@ -242,9 +264,25 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
             await page.click(sel, timeout=3000)
             await page.wait_for_load_state("domcontentloaded")
             await page.wait_for_timeout(2000)
+
+            # Check for post-submit error modals and dismiss them too
+            for modal_sel in ['button:has-text("OK")', 'button:has-text("Close")', '[class*="modal"] button']:
+                try:
+                    modal_btn = page.locator(modal_sel).first
+                    if await modal_btn.count() > 0 and await modal_btn.is_visible():
+                        modal_text = await page.locator('[class*="modal"], [class*="alert"]').first.text_content()
+                        print(f"  ⚠️  Post-submit modal: {(modal_text or '').strip()[:100]}")
+                        await modal_btn.click(timeout=2000)
+                        await page.wait_for_timeout(500)
+                except: pass
+
             await page.screenshot(path=f"confirmation_{label}.png", full_page=True)
-            print(f"  ✅ BOOKING CONFIRMED!")
-            return True
+
+            # Verify we got a confirmation
+            content = await page.content()
+            if "confirmed" in content.lower() or "booking" in content.lower():
+                print(f"  ✅ BOOKING CONFIRMED!")
+                return True
         except: continue
 
     await page.screenshot(path=f"error_noconfirm_{label}.png", full_page=True)
