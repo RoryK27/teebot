@@ -66,6 +66,21 @@ def load_booking():
         return None
 
 
+def get_target_date(booking: dict) -> datetime:
+    """Use exact ISO date from booking if available, otherwise calculate from day name."""
+    if "date" in booking and booking["date"]:
+        dt = datetime.strptime(booking["date"], "%Y-%m-%d")
+        print(f"  Using exact date from players.json: {dt.strftime('%A %d %B %Y')}")
+        return dt
+    # Fallback to day name calculation
+    days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    dow = days.index(booking["day"])
+    today = datetime.now()
+    days_ahead = (dow - today.weekday()) % 7 or 7
+    dt = today + timedelta(days=days_ahead)
+    print(f"  Calculated date from day name: {dt.strftime('%A %d %B %Y')}")
+    return dt
+
 def get_next_date_for_dow(day_name: str) -> datetime:
     days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
     dow = days.index(day_name)
@@ -311,7 +326,7 @@ async def main():
     time    = booking["time"]
     players = booking["players"][:4]
 
-    target_dt      = get_next_date_for_dow(day)
+    target_dt      = get_target_date(booking)
     fallback_times = build_fallback_times(time)
 
     print("=" * 54)
