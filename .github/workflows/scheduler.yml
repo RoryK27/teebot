@@ -1,0 +1,133 @@
+name: TeeBot - Scheduler (Monday backup, 7-9pm only)
+
+on:
+  schedule:
+    # Every 5 mins, 7pm-9pm UTC (= 8pm-10pm Irish summer, 7pm-9pm Irish winter)
+    # Covers the Monday 8:30pm release window as a backup
+    - cron: '0,5,10,15,20,25,30,35,40,45,50,55 19,20 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check-and-fire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if booking should fire now
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 << 'PYEOF'
+          import json, urllib.request, os, sys, base64
+          from datetime import datetime
+
+          REPO  = os.environ["GITHUB_REPOSITORY"]
+          TOKEN = os.environ["GITHUB_TOKEN"]
+          HEADERS = {
+              "Authorization": f"token {TOKEN}",
+              "Accept": "application/vnd.github.v3+json",
+              "Content-Type": "application/json",
+          }
+
+          def api(path, method="GET", body=None):
+              url = f"https://api.github.com/repos/{REPO}/{path}"
+              req = urllib.request.Request(url, headers=HEADERS, method=method)
+              if body:
+                  req.data = json.dumps(body).encode()
+              with urllib.request.urlopen(req) as r:
+                  return json.loads(r.read())
+
+          # Load players.json
+          try:
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{REPO}/contents/players.json",
+                  headers={"Authorization": f"token {TOKEN}", "Accept": "application/vnd.github.v3.raw"}
+              )
+              with urllib.request.urlopen(req) as r:
+                  data = json.loads(r.read())
+          except Exception as e:
+              print(f"Could not load players.json: {e}")
+              sys.exit(0)
+
+          now = datetime.now()
+          print(f"Scheduler running: {now.strftime('%A %d %B %Y %H:%M:%S')}")
+
+          release_type = data.get("release_type", "default")
+          release_str  = data.get("release_time")
+
+          # Handle custom release time
+          if release_type == "custom" and release_str:
+              try:
+                  release_dt = datetime.fromisoformat(release_str)
+                  diff_secs  = (release_dt - now).total_seconds()
+                  print(f"Custom release: {release_dt.strftime('%A %d %B %H:%M')} ({diff_secs:.0f}s away)")
+
+                  if -60 <= diff_secs <= 300:
+                      print("✅ Custom release time NOW — triggering teebot.yml!")
+                      api("actions/workflows/teebot.yml/dispatches", "POST", {"ref": "main"})
+
+                      # Clear the custom release time
+                      req2 = urllib.request.Request(
+                          f"https://api.github.com/repos/{REPO}/contents/players.json",
+                          headers={"Authorization": f"token {TOKEN}", "Accept": "application/vnd.github.v3+json"}
+                      )
+                      with urllib.request.urlopen(req2) as r:
+                          file_meta = json.loads(r.read())
+                      data["release_type"] = "default"
+                      data.pop("release_time", None)
+                      api("contents/players.json", "PUT", {
+                          "message": "TeeBot: clear custom release time",
+                          "content": base64.b64encode(json.dumps(data, indent=2).encode()).decode(),
+                          "sha": file_meta["sha"]
+                      })
+                      print("✅ Custom release time cleared")
+                  elif diff_secs > 0:
+                      print(f"⏳ Custom release in {diff_secs/60:.1f} mins — not yet")
+                  else:
+                      print(f"⏭  Custom release passed {abs(diff_secs):.0f}s ago — skipping")
+              except Exception as e:
+                  print(f"Error with custom release: {e}")
+              sys.exit(0)
+
+          # Handle default Monday 8:30pm release
+          # Only fire on Monday between 8:25pm-8:35pm Irish time
+          # GitHub runners are UTC — Ireland is UTC+1 in summer, UTC in winter
+          # We check if it's Monday and between 19:25-19:35 UTC (summer) or 20:25-20:35 UTC (winter)
+          if now.weekday() != 0:  # 0 = Monday
+              print(f"Not Monday ({now.strftime('%A')}) — skipping default release check")
+              sys.exit(0)
+
+          hour   = now.hour
+          minute = now.minute
+
+          # Fire window: 19:25-19:35 UTC (covers 20:25-20:35 Irish summer)
+          #           or 20:25-20:35 UTC (covers 20:25-20:35 Irish winter)
+          in_summer_window = (hour == 19 and 25 <= minute <= 35)
+          in_winter_window = (hour == 20 and 25 <= minute <= 35)
+
+          if in_summer_window or in_winter_window:
+              # Check teebot.yml hasn't already run in the last 10 mins
+              # to avoid double-triggering alongside the main cron
+              try:
+                  runs = api("actions/workflows/teebot.yml/runs?per_page=1")
+                  last_run = runs.get("workflow_runs", [{}])[0]
+                  last_run_time = last_run.get("created_at", "")
+                  if last_run_time:
+                      from datetime import timezone
+                      last_dt = datetime.fromisoformat(last_run_time.replace("Z", "+00:00"))
+                      last_dt_local = last_dt.replace(tzinfo=None)
+                      mins_ago = (now - last_dt_local).total_seconds() / 60
+                      if mins_ago < 10:
+                          print(f"✅ teebot.yml already ran {mins_ago:.1f} mins ago — no need to trigger again")
+                          sys.exit(0)
+              except Exception as e:
+                  print(f"Could not check last run: {e} — triggering anyway")
+
+              print(f"✅ Monday release window ({now.strftime('%H:%M')} UTC) — triggering teebot.yml!")
+              api("actions/workflows/teebot.yml/dispatches", "POST", {"ref": "main"})
+              print("✅ teebot.yml triggered as backup!")
+          else:
+              print(f"⏳ Monday but outside release window ({now.strftime('%H:%M')} UTC) — standing by")
+
+          PYEOF
