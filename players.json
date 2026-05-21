@@ -1,11 +1,11 @@
 {
   "release_type": "custom",
-  "release_time": "2026-05-21T16:05",
+  "release_time": "2026-05-21T16:15",
   "bookings": [
     {
       "day": "Monday",
       "date": "2026-05-24",
-      "time": "20:00",
+      "time": "19:50",
       "players": [
         "Kirwan, Rory",
         "Guest",
