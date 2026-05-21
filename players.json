@@ -1,15 +1,26 @@
 {
   "release_type": "custom",
-  "release_time": "2026-05-21T16:30",
+  "release_time": "2026-05-21T16:35",
   "bookings": [
     {
-      "day": "Wednesday",
-      "date": "2026-05-27",
-      "time": "19:50",
+      "day": "Monday",
+      "date": "2026-05-25",
+      "time": "20:00",
       "players": [
         "Kirwan, Rory",
         "Guest",
         "Guest",
+        "Guest"
+      ],
+      "fallback_window": 30,
+      "fallback_interval": 10
+    },
+    {
+      "day": "Friday",
+      "date": "2026-05-29",
+      "time": "20:00",
+      "players": [
+        "Kirwan, Rory",
         "Guest"
       ],
       "fallback_window": 30,
