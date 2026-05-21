@@ -377,12 +377,23 @@ async def main():
             await login(page)
 
             # Navigate to tee sheet early and sit there
+            # Sleep in 30-second chunks with status output so GitHub
+            # doesn't kill the job for appearing idle
             wait_until = release_dt - timedelta(seconds=PRE_RELEASE_WAIT_SECS)
             now = datetime.now()
             if now < wait_until:
                 secs = (wait_until - now).total_seconds()
-                print(f"  Waiting {secs:.0f}s then navigating to tee sheet...")
-                await asyncio.sleep(secs)
+                print(f"  Waiting {secs:.0f}s until {wait_until.strftime('%H:%M:%S')} then navigating to tee sheet...")
+                while datetime.now() < wait_until:
+                    remaining = (wait_until - datetime.now()).total_seconds()
+                    if remaining <= 0:
+                        break
+                    sleep_chunk = min(30, remaining)
+                    await asyncio.sleep(sleep_chunk)
+                    still_remaining = (wait_until - datetime.now()).total_seconds()
+                    if still_remaining > 0:
+                        print(f"  ⏱  {still_remaining:.0f}s until tee sheet navigation...")
+                print(f"  Navigating to tee sheet now...")
 
             await navigate_to_date(page, target_dt)
             await page.screenshot(path=f"debug_teesheet_{label}.png", full_page=True)
