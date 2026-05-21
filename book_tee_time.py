@@ -58,22 +58,51 @@ def load_players_json():
 
 def get_release_time(data: dict) -> datetime:
     """
-    Get the release time:
-    - If players.json has a custom release_time — use that
-    - Otherwise default to 20:30 today (standard Monday BRS release)
+    Get the release time in UTC (GitHub runners use UTC).
+    Ireland is UTC+0 in winter, UTC+1 in summer (last Sun Mar - last Sun Oct).
+    We detect Irish summer time and adjust accordingly.
+    - Custom release_time from players.json is in Irish local time — convert to UTC
+    - Default is 20:30 Irish time = 19:30 UTC summer / 20:30 UTC winter
     """
-    now = datetime.now()
+    import time as _time
+
+    now = datetime.utcnow()
+
+    # Detect if Ireland is currently on summer time (UTC+1)
+    # Summer time runs last Sunday in March to last Sunday in October
+    month = now.month
+    irish_offset_hours = 1 if 4 <= month <= 9 else 0
+    # More precise check for March and October boundary months
+    if month == 3:
+        # After last Sunday in March
+        last_sun = max(d for d in range(25, 32)
+                      if datetime(now.year, 3, d).weekday() == 6)
+        irish_offset_hours = 1 if now.day > last_sun else 0
+    elif month == 10:
+        # Before last Sunday in October
+        last_sun = max(d for d in range(25, 32)
+                      if datetime(now.year, 10, d).weekday() == 6)
+        irish_offset_hours = 0 if now.day >= last_sun else 1
+
+    print(f"  Irish time offset: UTC+{irish_offset_hours} ({'summer' if irish_offset_hours else 'winter'})")
+
     custom = data.get("release_time")
     if custom:
         try:
-            release_dt = datetime.fromisoformat(custom)
-            print(f"  Custom release time: {release_dt.strftime('%A %d %B %H:%M:%S')}")
-            return release_dt
+            # Parse as Irish local time, convert to UTC for comparison
+            release_irish = datetime.fromisoformat(custom)
+            release_utc = release_irish - timedelta(hours=irish_offset_hours)
+            print(f"  Custom release: {release_irish.strftime('%H:%M:%S')} Irish = {release_utc.strftime('%H:%M:%S')} UTC")
+            return release_utc
         except Exception as e:
-            print(f"  ⚠️  Could not parse release_time '{custom}': {e} — using 20:30")
-    release_dt = now.replace(hour=20, minute=30, second=0, microsecond=0)
-    print(f"  Default release time: 20:30:00 today")
-    return release_dt
+            print(f"  ⚠️  Could not parse release_time: {e} — using 20:30 Irish")
+
+    # Default: 20:30 Irish time
+    release_irish_hour = 20
+    release_utc_hour = release_irish_hour - irish_offset_hours
+    release_utc = now.replace(hour=release_utc_hour, minute=30, second=0, microsecond=0)
+    print(f"  Default release: 20:30 Irish = {release_utc_hour}:30 UTC")
+    return release_utc
 
 
 def get_target_date(booking: dict) -> datetime:
@@ -171,7 +200,7 @@ async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
     if booked_time:
         return True
 
-    secs_to_release = (release_dt - datetime.now()).total_seconds()
+    secs_to_release = (release_dt - datetime.utcnow()).total_seconds()
     if secs_to_release > 0:
         print(f"  ⏳ {secs_to_release:.0f}s to release at {release_dt.strftime('%H:%M:%S')} — hammering refresh...")
     else:
@@ -187,11 +216,11 @@ async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
 
         booked_time = await try_click_book_now(page, fallback_times)
         if booked_time:
-            elapsed = (datetime.now() - release_dt).total_seconds()
+            elapsed = (datetime.utcnow() - release_dt).total_seconds()
             print(f"  ✅ Grabbed {booked_time} at {elapsed:+.1f}s from release (attempt {attempt})")
             return True
 
-        secs_to_release = (release_dt - datetime.now()).total_seconds()
+        secs_to_release = (release_dt - datetime.utcnow()).total_seconds()
         if secs_to_release > 5:
             if attempt % 10 == 0:
                 print(f"  ⏳ {secs_to_release:.0f}s to release (attempt {attempt})")
@@ -384,8 +413,8 @@ async def main():
             if now < wait_until:
                 secs = (wait_until - now).total_seconds()
                 print(f"  Waiting {secs:.0f}s until {wait_until.strftime('%H:%M:%S')} then navigating to tee sheet...")
-                while datetime.now() < wait_until:
-                    remaining = (wait_until - datetime.now()).total_seconds()
+                while datetime.utcnow() < wait_until:
+                    remaining = (wait_until - datetime.utcnow()).total_seconds()
                     if remaining <= 0:
                         break
                     sleep_chunk = min(30, remaining)
