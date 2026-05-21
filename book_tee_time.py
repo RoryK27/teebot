@@ -298,6 +298,10 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
     if not select2_ready:
         await page.wait_for_timeout(2000)
 
+    # Explicitly set Player 1 as well in case BRS didn't pre-fill
+    await set_player_via_select2(page, 1, players[0])
+    await page.wait_for_timeout(500)
+
     for i, player in enumerate(players[1:4], start=2):
         if player:
             await set_player_via_select2(page, i, player)
