@@ -32,8 +32,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "0"
-          RELEASE_TIME: "20:30"
-        run: python book_tee_time.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u book_tee_time.py
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,8 +70,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "1"
-          RELEASE_TIME: "20:30"
-        run: python book_tee_time.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u book_tee_time.py
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,8 +108,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "2"
-          RELEASE_TIME: "20:30"
-        run: python book_tee_time.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u book_tee_time.py
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -146,8 +146,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "3"
-          RELEASE_TIME: "20:30"
-        run: python book_tee_time.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u book_tee_time.py
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
