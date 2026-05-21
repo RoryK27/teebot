@@ -242,7 +242,29 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
 async def fill_players_and_confirm(page, players: list) -> bool:
     print(f"\nStep 4: Adding players to booking form...")
     await page.screenshot(path="debug_07_booking_form.png", full_page=True)
-    await page.wait_for_timeout(500)
+
+    # Wait for booking form AND Select2 dropdowns to fully load
+    print("  Waiting for booking form to fully load...")
+    try:
+        await page.wait_for_selector('#member_booking_form_player_2', timeout=10000)
+        print("  ✅ Booking form loaded")
+    except Exception:
+        print("  ⚠️  Timed out waiting for form — trying anyway")
+    await page.wait_for_timeout(1500)
+
+    # Verify Select2 is initialised
+    select2_ready = await page.evaluate("""
+        () => {
+            const sel = document.getElementById('member_booking_form_player_2');
+            if (!sel) return false;
+            const $ = window.jQuery || window.$;
+            if ($ && $(sel).data('select2')) return true;
+            return sel.options.length > 1;
+        }
+    """)
+    print(f"  Select2 ready: {select2_ready}")
+    if not select2_ready:
+        await page.wait_for_timeout(2000)
 
     print(f"  ✅ Player 1 ({players[0]}) pre-filled by BRS")
 
@@ -329,6 +351,35 @@ async def main():
     target_dt      = get_target_date(booking)
     fallback_times = build_fallback_times(time)
 
+    # Determine release time — custom override or default 20:30
+    now = datetime.now()
+    try:
+        rel_req = urllib.request.Request(
+            f"https://api.github.com/repos/{REPO}/contents/players.json",
+            headers={"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3.raw"}
+        )
+        with urllib.request.urlopen(rel_req) as r:
+            pj = json.loads(r.read())
+            custom_release = pj.get("release_time")
+    except Exception:
+        custom_release = None
+
+    if custom_release:
+        try:
+            release_dt = datetime.fromisoformat(custom_release)
+            print(f"  Custom release time: {release_dt.strftime('%A %d %B %H:%M:%S')}")
+        except Exception:
+            release_dt = now.replace(hour=20, minute=30, second=0, microsecond=0)
+    else:
+        release_dt = now.replace(hour=20, minute=30, second=0, microsecond=0)
+        print(f"  Default release time: 20:30:00")
+
+    secs_until = (release_dt - now).total_seconds()
+    if secs_until > 0:
+        print(f"  Waiting {secs_until:.0f}s until release...")
+    else:
+        print(f"  Release already passed — booking immediately")
+
     print("=" * 54)
     print("  TeeBot TEST — Beaverstown Golf Club")
     print(f"  Date   : {target_dt.strftime('%A %d %B %Y')}")
@@ -343,14 +394,65 @@ async def main():
         await login(page)
         await go_to_date(page, target_dt)
 
+        # Wait until release time then try to book
         booked_time = None
-        for attempt_time in fallback_times:
-            print(f"\n  Trying {attempt_time}...")
-            opened = await try_book_time(page, attempt_time)
-            if opened:
-                booked_time = attempt_time
-                break
-            await go_to_date(page, target_dt)
+        now = datetime.now()
+        secs_until = (release_dt - now).total_seconds()
+
+        if secs_until > 5:
+            print(f"  Waiting {secs_until:.0f}s on tee sheet until release at {release_dt.strftime('%H:%M:%S')}...")
+            # Hammer refresh until release time
+            deadline = release_dt + timedelta(seconds=300)
+            attempt = 0
+            while datetime.now() < deadline:
+                attempt += 1
+                try:
+                    await page.reload(wait_until="domcontentloaded", timeout=8000)
+                except Exception:
+                    await asyncio.sleep(0.3)
+                    continue
+                page_content = await page.content()
+                for try_time in fallback_times:
+                    if try_time not in page_content:
+                        continue
+                    try:
+                        btn = page.locator(f'tr:has-text("{try_time}") a:has-text("BOOK NOW")').first
+                        if await btn.count() > 0 and await btn.is_visible():
+                            elapsed = (datetime.now() - release_dt).total_seconds()
+                            print(f"  🚀 BOOK NOW at {try_time}! ({elapsed:+.1f}s, attempt {attempt})")
+                            await btn.click(timeout=3000)
+                            await page.wait_for_load_state("domcontentloaded")
+                            await page.wait_for_timeout(1500)
+                            if await page.locator('text="already booked"').count() > 0:
+                                for sel in ['button:has-text("BACK")', 'button:has-text("OK")']:
+                                    try:
+                                        await page.locator(sel).first.click(timeout=1500)
+                                        break
+                                    except: pass
+                                continue
+                            if await page.locator('text="Booking Details"').count() > 0:
+                                booked_time = try_time
+                                break
+                    except Exception:
+                        continue
+                if booked_time:
+                    break
+                secs_left = (release_dt - datetime.now()).total_seconds()
+                if secs_left > 5:
+                    await asyncio.sleep(0.5)
+                elif secs_left > 0:
+                    await asyncio.sleep(0.1)
+                else:
+                    await asyncio.sleep(0.3)
+        else:
+            # Release already passed — try immediately
+            for attempt_time in fallback_times:
+                print(f"\n  Trying {attempt_time}...")
+                opened = await try_book_time(page, attempt_time)
+                if opened:
+                    booked_time = attempt_time
+                    break
+                await go_to_date(page, target_dt)
 
         if booked_time:
             await fill_players_and_confirm(page, players)
