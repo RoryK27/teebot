@@ -84,6 +84,53 @@ input:focus, select:focus { border-color: var(--green-light); }
 .token-status.err { color: var(--danger); }
 .token-saved { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--success); padding: 0.4rem 0.75rem; background: #d4edda; border-radius: var(--radius); }
 
+/* CALENDAR */
+.calendar-wrap { position: relative; }
+.cal-display {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.55rem 0.75rem; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--white);
+  cursor: pointer; font-size: 0.88rem; transition: border-color 0.15s;
+}
+.cal-display:hover { border-color: var(--green-light); }
+.cal-icon { font-size: 0.9rem; }
+.calendar-popup {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 200; min-width: 280px; padding: 0.75rem;
+}
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 0.75rem; font-family: 'DM Serif Display', serif;
+  font-size: 0.95rem; color: var(--green);
+}
+.cal-nav {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 1rem; padding: 0.2rem 0.5rem;
+  border-radius: var(--radius); transition: background 0.15s;
+}
+.cal-nav:hover { background: var(--cream-dark); }
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+}
+.cal-day-name {
+  text-align: center; font-family: 'DM Mono', monospace;
+  font-size: 0.6rem; color: var(--text-muted); padding: 0.2rem 0;
+  text-transform: uppercase;
+}
+.cal-day {
+  text-align: center; padding: 0.35rem 0.2rem; border-radius: var(--radius);
+  font-size: 0.82rem; cursor: pointer; transition: all 0.1s;
+  border: none; background: none; width: 100%;
+}
+.cal-day:hover:not(:disabled) { background: var(--cream-dark); }
+.cal-day.selected { background: var(--green); color: var(--gold-light); font-weight: 600; }
+.cal-day.today { font-weight: 600; color: var(--green); }
+.cal-day.available { color: var(--text); }
+.cal-day.unavailable { color: var(--border); cursor: default; }
+.cal-day:disabled { color: var(--border); cursor: default; }
+
 /* SLOTS */
 .slots-container { display: flex; flex-direction: column; gap: 1rem; }
 .slot-card { background: var(--cream); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; transition: border-color 0.2s; }
@@ -211,7 +258,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
     <div class="form-row cols-2" style="margin-bottom:0;">
       <div>
         <div style="font-weight:600;margin-bottom:0.3rem;">Test Booking</div>
-        <div class="help-text">Saves config and triggers the test workflow right now. Use this to verify a known free slot.</div>
+        <div class="help-text">Saves config and triggers the booking workflow right now. Use this to book a known free slot or test before Monday.</div>
         <button class="btn btn-secondary mt-1" id="bookNowBtn" onclick="bookNow()">▶ Run Test Booking</button>
       </div>
       <div>
@@ -410,15 +457,23 @@ function buildSlotCard(slot) {
     <div class="form-row cols-2" style="margin-bottom:0.75rem;">
       <div>
         <label>Date</label>
-        <div class="select-wrap">
-          <select onchange="updateDate('${slot.id}',this.value,this.options[this.selectedIndex].dataset.day,this.options[this.selectedIndex].text)">
-            ${dateOptions}
-          </select>
+        <div class="calendar-wrap" id="cal-wrap-${slot.id}">
+          <div class="cal-display" onclick="toggleCalendar('${slot.id}')">
+            <span id="cal-label-${slot.id}">${slot.label || slot.dayName}</span>
+            <span class="cal-icon">📅</span>
+          </div>
+          <div class="calendar-popup" id="cal-popup-${slot.id}" style="display:none;">
+            ${buildCalendarHTML(slot.id, slot.iso)}
+          </div>
         </div>
       </div>
       <div>
         <label>Preferred tee time</label>
-        <input type="time" value="${slot.time}" onchange="updateTime('${slot.id}',this.value)">
+        <div class="select-wrap">
+          <select onchange="updateTime('${slot.id}',this.value)">
+            ${generateTimeOptions(slot.time)}
+          </select>
+        </div>
       </div>
     </div>
     <label>Players</label>
@@ -532,7 +587,7 @@ async function bookNow() {
   try {
     await savePlayersJson();
     setActionStatus('✅ Saved — triggering test workflow...');
-    await triggerWorkflow('teebot-test.yml');
+    await triggerWorkflow('teebot.yml');
     setActionStatus('✅ Test workflow triggered! Check GitHub Actions for results.');
     showToast('Test booking triggered');
     document.getElementById('statusMain').textContent = '🏃 Test booking running...';
@@ -600,6 +655,130 @@ function showToast(msg, err) {
   t.textContent = msg; t.className = 'toast'+(err?' error':'')+' show';
   setTimeout(() => t.className = 'toast'+(err?' error':''), 3500);
 }
+
+// ── TIME OPTIONS ──────────────────────────────────────────────────────────
+
+function generateTimeOptions(selected) {
+  const options = [];
+  for (let h = 6; h <= 20; h++) {
+    for (let m = 0; m < 60; m += 10) {
+      if (h === 20 && m > 0) break; // Stop at 20:00
+      const hh = h.toString().padStart(2,'0');
+      const mm = m.toString().padStart(2,'0');
+      const val = `${hh}:${mm}`;
+      const sel = val === selected ? 'selected' : '';
+      options.push(`<option value="${val}" ${sel}>${val}</option>`);
+    }
+  }
+  return options.join('');
+}
+
+// ── CALENDAR ───────────────────────────────────────────────────────────────
+
+let calState = {}; // track open calendars and their view month
+
+function buildCalendarHTML(slotId, selectedIso) {
+  const today = new Date();
+  const state = calState[slotId] || {
+    year: today.getFullYear(),
+    month: today.getMonth()
+  };
+  calState[slotId] = state;
+
+  const year = state.year;
+  const month = state.month;
+  const monthName = new Date(year, month, 1).toLocaleString('en-IE', { month: 'long', year: 'numeric' });
+
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayDate = today.getDate();
+  const todayMonth = today.getMonth();
+  const todayYear = today.getFullYear();
+
+  // Available range: tomorrow to 14 days from now
+  const minDate = new Date(today); minDate.setDate(today.getDate() + 1);
+  const maxDate = new Date(today); maxDate.setDate(today.getDate() + 14);
+
+  let html = `
+    <div class="cal-header">
+      <button class="cal-nav" onclick="calNav('${slotId}',-1)">◀</button>
+      <span>${monthName}</span>
+      <button class="cal-nav" onclick="calNav('${slotId}',1)">▶</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-day-name">Su</div>
+      <div class="cal-day-name">Mo</div>
+      <div class="cal-day-name">Tu</div>
+      <div class="cal-day-name">We</div>
+      <div class="cal-day-name">Th</div>
+      <div class="cal-day-name">Fr</div>
+      <div class="cal-day-name">Sa</div>
+  `;
+
+  // Empty cells before first day
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const thisDate = new Date(year, month, d);
+    const iso = thisDate.toISOString().split('T')[0];
+    const isSelected = iso === selectedIso;
+    const isToday = d === todayDate && month === todayMonth && year === todayYear;
+    const isAvailable = thisDate >= minDate && thisDate <= maxDate;
+
+    let cls = 'cal-day';
+    if (isSelected) cls += ' selected';
+    else if (isToday) cls += ' today';
+    if (isAvailable) cls += ' available';
+
+    if (isAvailable) {
+      const dayName = thisDate.toLocaleDateString('en-IE', { weekday: 'long' });
+      const label = thisDate.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'short' });
+      html += `<button class="${cls}" onclick="selectCalDate('${slotId}','${iso}','${dayName}','${label}')">${d}</button>`;
+    } else {
+      html += `<button class="${cls} unavailable" disabled>${d}</button>`;
+    }
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function toggleCalendar(slotId) {
+  const popup = document.getElementById('cal-popup-' + slotId);
+  const isOpen = popup.style.display !== 'none';
+  // Close all other calendars
+  document.querySelectorAll('.calendar-popup').forEach(p => p.style.display = 'none');
+  if (!isOpen) {
+    popup.style.display = 'block';
+  }
+}
+
+function calNav(slotId, dir) {
+  const state = calState[slotId] || { year: new Date().getFullYear(), month: new Date().getMonth() };
+  state.month += dir;
+  if (state.month > 11) { state.month = 0; state.year++; }
+  if (state.month < 0)  { state.month = 11; state.year--; }
+  calState[slotId] = state;
+  // Get current selected iso for this slot
+  const slot = slots.find(s => String(s.id) === String(slotId));
+  const popup = document.getElementById('cal-popup-' + slotId);
+  popup.innerHTML = buildCalendarHTML(slotId, slot ? slot.iso : '');
+}
+
+function selectCalDate(slotId, iso, dayName, label) {
+  updateDate(slotId, iso, dayName, label);
+  document.getElementById('cal-popup-' + slotId).style.display = 'none';
+  document.getElementById('cal-label-' + slotId).textContent = label;
+}
+
+// Close calendar when clicking outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.calendar-wrap')) {
+    document.querySelectorAll('.calendar-popup').forEach(p => p.style.display = 'none');
+  }
+});
 
 init();
 </script>
