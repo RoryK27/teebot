@@ -242,10 +242,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
           <label>Custom release date &amp; time</label>
           <input type="datetime-local" id="customRelease" onchange="updateReleaseTag(true)">
         </div>
-        <div>
-          <label>Note (optional)</label>
-          <input type="text" id="customNote" placeholder="e.g. Competition timesheet">
-        </div>
+
       </div>
       <div class="help-text">Keep this tab open — TeeBot will trigger the workflow the moment this time is reached.</div>
     </div>
@@ -318,7 +315,7 @@ function getNext14Days() {
     d.setDate(today.getDate() + i);
     const dayName = d.toLocaleDateString('en-IE', { weekday: 'long' });
     const dateStr = d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
-    const isoDate = d.toISOString().split('T')[0]; // YYYY-MM-DD
+    const isoDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; // YYYY-MM-DD local
     days.push({ label: `${dayName} ${dateStr}`, iso: isoDate, dayName });
   }
   return days;
@@ -722,7 +719,8 @@ function buildCalendarHTML(slotId, selectedIso) {
 
   for (let d = 1; d <= daysInMonth; d++) {
     const thisDate = new Date(year, month, d);
-    const iso = thisDate.toISOString().split('T')[0];
+    // Use local date string to avoid UTC timezone shift
+    const iso = `${thisDate.getFullYear()}-${String(thisDate.getMonth()+1).padStart(2,'0')}-${String(thisDate.getDate()).padStart(2,'0')}`;
     const isSelected = iso === selectedIso;
     const isToday = d === todayDate && month === todayMonth && year === todayYear;
     const isAvailable = thisDate >= minDate && thisDate <= maxDate;
