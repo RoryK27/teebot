@@ -2,19 +2,24 @@ name: TeeBot - Auto Book Tee Time
 
 on:
   schedule:
-    - cron: '29 20 * * 1'   # 20:29 UTC = 20:29 Irish winter time
-    - cron: '29 19 * * 1'   # 19:29 UTC = 20:29 Irish summer time (UTC+1)
+    - cron: '27 20 * * 1'   # 20:27 UTC = 21:27 Irish summer (UTC+1) — too late
+    - cron: '27 19 * * 1'   # 19:27 UTC = 20:27 Irish summer (UTC+1) ✅
   workflow_dispatch:
 
 jobs:
-  # Job 1 — always runs, books first booking in players.json
   book-slot-1:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}
       - name: Install dependencies
         run: |
           pip install playwright
@@ -27,6 +32,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "0"
+          RELEASE_TIME: "20:30"
         run: python book_tee_time.py
       - name: Upload screenshots
         if: always()
@@ -39,14 +45,19 @@ jobs:
             debug_*.png
           retention-days: 7
 
-  # Job 2 — runs in parallel, books second booking if it exists
   book-slot-2:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}
       - name: Install dependencies
         run: |
           pip install playwright
@@ -59,6 +70,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "1"
+          RELEASE_TIME: "20:30"
         run: python book_tee_time.py
       - name: Upload screenshots
         if: always()
@@ -71,14 +83,19 @@ jobs:
             debug_*.png
           retention-days: 7
 
-  # Job 3 — runs in parallel, books third booking if it exists
   book-slot-3:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}
       - name: Install dependencies
         run: |
           pip install playwright
@@ -91,6 +108,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "2"
+          RELEASE_TIME: "20:30"
         run: python book_tee_time.py
       - name: Upload screenshots
         if: always()
@@ -103,14 +121,19 @@ jobs:
             debug_*.png
           retention-days: 7
 
-  # Job 4 — runs in parallel, books fourth booking if it exists
   book-slot-4:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}
       - name: Install dependencies
         run: |
           pip install playwright
@@ -123,6 +146,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "3"
+          RELEASE_TIME: "20:30"
         run: python book_tee_time.py
       - name: Upload screenshots
         if: always()
