@@ -39,7 +39,8 @@ PRE_RELEASE_WAIT_SECS = 90
 # Refresh interval while waiting for BOOK NOW (seconds)
 REFRESH_INTERVAL_SECS = 0.5
 # Give up this many seconds after release time
-TIMEOUT_AFTER_RELEASE = 60
+# Set high enough to cover BRS releasing slightly late
+TIMEOUT_AFTER_RELEASE = 300  # 5 minutes after release before giving up
 
 
 def load_booking():
@@ -243,12 +244,34 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
 
 async def fill_and_confirm(page, players: list, label: str) -> bool:
     print(f"  Filling {len([p for p in players[1:4] if p])} additional players...")
-    await page.wait_for_timeout(400)
+
+    # Wait for booking form AND Select2 dropdowns to fully load
+    print("  Waiting for booking form to fully load...")
+    try:
+        await page.wait_for_selector('#member_booking_form_player_2', timeout=10000)
+        print("  ✅ Booking form loaded")
+    except Exception:
+        print("  ⚠️  Timed out waiting for form — trying anyway")
+    await page.wait_for_timeout(1500)
+
+    # Verify Select2 is initialised for player slots
+    select2_ready = await page.evaluate("""
+        () => {
+            const sel = document.getElementById('member_booking_form_player_2');
+            if (!sel) return false;
+            const $ = window.jQuery || window.$;
+            if ($ && $(sel).data('select2')) return true;
+            return sel.options.length > 1;
+        }
+    """)
+    print(f"  Select2 ready: {select2_ready}")
+    if not select2_ready:
+        await page.wait_for_timeout(2000)  # extra wait if not ready yet
 
     for i, player in enumerate(players[1:4], start=2):
         if player:
             await set_player_via_select2(page, i, player)
-            await page.wait_for_timeout(200)
+            await page.wait_for_timeout(800)  # wait for BRS to register each player
 
     await page.screenshot(path=f"debug_players_{label}.png", full_page=True)
 
@@ -325,7 +348,40 @@ async def main():
 
     target_dt      = get_target_date(booking)
     fallback_times = build_fallback_times(time, window, interval)
-    release_dt     = datetime.now()  # workflow fires at release time
+    # Determine release time:
+    # 1. If players.json has a custom release_time (set via TeeBot site override) — use that
+    # 2. Otherwise default to 20:30 today (standard Monday BRS release)
+    now = datetime.now()
+    custom_release = booking.get("release_time") or data.get("release_time") if "data" in dir() else None
+
+    # Re-read from players.json for release_time at top level
+    try:
+        rel_req = urllib.request.Request(
+            f"https://api.github.com/repos/{REPO}/contents/players.json",
+            headers={"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3.raw"}
+        )
+        with urllib.request.urlopen(rel_req) as r:
+            pj = json.loads(r.read())
+            custom_release = pj.get("release_time")
+    except Exception:
+        custom_release = None
+
+    if custom_release:
+        try:
+            release_dt = datetime.fromisoformat(custom_release)
+            print(f"  Custom release time: {release_dt.strftime('%A %d %B %H:%M:%S')}")
+        except Exception:
+            release_dt = now.replace(hour=20, minute=30, second=0, microsecond=0)
+            print(f"  Could not parse custom release time — using 20:30")
+    else:
+        release_dt = now.replace(hour=20, minute=30, second=0, microsecond=0)
+        print(f"  Default release time: 20:30:00")
+
+    secs_until = (release_dt - now).total_seconds()
+    if secs_until > 0:
+        print(f"  Waiting {secs_until:.0f}s until release...")
+    else:
+        print(f"  Release time already passed by {abs(secs_until):.0f}s — booking immediately")
     label          = f"{day.lower()[:3]}_{time.replace(':','')}"
 
     print("=" * 54)
