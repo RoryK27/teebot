@@ -1,6 +1,6 @@
 {
-  "release_type": "custom",
-  "release_time": "2026-05-22T12:30",
+  "release_type": "default",
+  "release_time": null,
   "bookings": [
     {
       "day": "Sunday",
