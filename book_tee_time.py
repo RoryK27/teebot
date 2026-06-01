@@ -402,6 +402,17 @@ async def main():
     print(f"  Release : {release_dt.strftime('%H:%M:%S')}")
     print("=" * 54)
 
+    # Safety check — exit cleanly if triggered more than 15 mins before release
+    # Prevents GitHub wasting runner time when triggered too early
+    now_check = datetime.utcnow()
+    secs_until = (release_dt - now_check).total_seconds()
+    if secs_until > 900:
+        mins = secs_until / 60
+        print(f"  ⚠️  Release is {mins:.0f} mins away — triggered too early!")
+        print(f"  ℹ️  Please trigger the workflow at 20:27 Irish time (3 mins before release)")
+        print(f"  Exiting cleanly.")
+        return
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page    = await browser.new_page(viewport={"width": 1280, "height": 900})
