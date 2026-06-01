@@ -3,26 +3,13 @@
   "release_time": null,
   "bookings": [
     {
-      "day": "Sunday",
-      "date": "2026-05-31",
-      "time": "08:40",
-      "players": [
-        "Kirwan, Rory",
-        "Kirwan, Barry",
-        "Carrick, Paul",
-        "Legge, Simon"
-      ],
-      "fallback_window": 30,
-      "fallback_interval": 10
-    },
-    {
       "day": "Thursday",
-      "date": "2026-06-04",
-      "time": "17:50",
+      "date": "2026-06-11",
+      "time": "18:00",
       "players": [
         "Kirwan, Rory",
-        "Kelly, Edward",
         "Carrick, Paul",
+        "Kelly, Edward",
         "Lynch, Niall"
       ],
       "fallback_window": 30,
