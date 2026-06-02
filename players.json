@@ -1,6 +1,6 @@
 {
   "release_type": "custom",
-  "release_time": "2026-06-02T15:00",
+  "release_time": "2026-05-22T15:00",
   "bookings": [
     {
       "day": "Wednesday",
@@ -12,7 +12,7 @@
         "Guest",
         "Guest"
       ],
-      "fallback_window": 30,
+      "fallback_window": 10,
       "fallback_interval": 10
     }
   ]
