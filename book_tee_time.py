@@ -251,50 +251,106 @@ async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
 
 
 async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
+    """
+    BRS uses a Vue autocomplete for player slots:
+    - Click the input to open dropdown
+    - For Guest: click Guest from General section immediately
+    - For named players: type surname, wait for results, click match
+    - Falls back to Select2/native if Vue approach fails
+    """
     member_id = PLAYER_IDS.get(player_name)
+    is_guest = player_name.strip().lower() == "guest"
+    surname = player_name.split(",")[0].strip() if not is_guest else ""
+    select_id = f"member_booking_form_player_{slot_num}"
+
+    print(f"    Setting player {slot_num}: {player_name}")
+
+    # Method 1: Vue autocomplete approach
+    try:
+        # Find the input for this slot - it's a text input with placeholder
+        inputs = page.locator('input[placeholder="Start typing to find player..."]')
+        count = await inputs.count()
+        print(f"    Found {count} player inputs")
+
+        if count >= slot_num - 1:
+            target = inputs.nth(slot_num - 2)
+            await target.click()
+            await page.wait_for_timeout(600)
+
+            if not is_guest:
+                await target.fill("")
+                await page.keyboard.type(surname, delay=80)
+                await page.wait_for_timeout(1500)
+
+            # Find and click the matching item in dropdown
+            SKIP = {"You and your buddies", "Other club members",
+                    "General", "Start typing to find player...", ""}
+
+            all_li = await page.locator("li").all()
+            for li in all_li:
+                try:
+                    if not await li.is_visible():
+                        continue
+                    text = (await li.text_content() or "").strip()
+                    if text in SKIP:
+                        continue
+                    if is_guest and text == "Guest":
+                        await li.click(timeout=2000)
+                        await page.wait_for_timeout(500)
+                        print(f"    ✅ Player {slot_num}: Guest (Vue)")
+                        return True
+                    if not is_guest and (text == player_name or text.startswith(surname)):
+                        await li.click(timeout=2000)
+                        await page.wait_for_timeout(500)
+                        print(f"    ✅ Player {slot_num}: {text} (Vue)")
+                        return True
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"    Vue method failed: {e}")
+
+    # Method 2: Select2/native fallback
     if not member_id:
         print(f"    ⚠️  No member ID for '{player_name}'")
         return False
 
-    select_id = f"member_booking_form_player_{slot_num}"
     result = await page.evaluate(f"""
         () => {{
             const sel = document.getElementById('{select_id}');
             if (!sel) return 'ERROR: not found';
+            // Try by value first
             const opt = sel.querySelector('option[value="{member_id}"]');
-            if (!opt) {{
-                // Try finding by text content for Guest
-                const allOpts = sel.querySelectorAll('option');
-                for (const o of allOpts) {{
-                    if (o.textContent.trim() === 'Guest') {{
-                        sel.value = o.value;
-                        sel.dispatchEvent(new Event('change', {{bubbles:true}}));
-                        const $ = window.jQuery || window.$;
-                        if ($) $(sel).val(o.value).trigger('change');
-                        return 'OK:guest-by-text';
+            if (opt) {{
+                try {{
+                    const $ = window.jQuery || window.$;
+                    if ($ && $(sel).data('select2')) {{
+                        $(sel).val('{member_id}').trigger('change');
+                        return 'OK:select2';
                     }}
-                }}
-                return 'ERROR: option {member_id} missing';
+                }} catch(e) {{}}
+                sel.value = '{member_id}';
+                sel.dispatchEvent(new Event('change', {{bubbles:true}}));
+                return 'OK:native';
             }}
-            try {{
-                const $ = window.jQuery || window.$;
-                if ($ && $(sel).data('select2')) {{
-                    $(sel).val('{member_id}').trigger('change');
-                    return 'OK:select2';
+            // Try by text for Guest
+            const allOpts = sel.querySelectorAll('option');
+            for (const o of allOpts) {{
+                if (o.textContent.trim() === '{player_name}') {{
+                    sel.value = o.value;
+                    sel.dispatchEvent(new Event('change', {{bubbles:true}}));
+                    return 'OK:by-text';
                 }}
-            }} catch(e) {{}}
-            sel.value = '{member_id}';
-            sel.dispatchEvent(new Event('change', {{bubbles:true}}));
-            return 'OK:native';
+            }}
+            return 'ERROR: option missing';
         }}
     """)
 
     if 'ERROR' in result:
-        print(f"    ⚠️  Slot {slot_num}: {result}")
+        print(f"    ⚠️  Slot {slot_num} fallback: {result}")
         return False
 
     await page.wait_for_timeout(300)
-    print(f"    ✅ Player {slot_num}: {player_name}")
+    print(f"    ✅ Player {slot_num}: {player_name} (fallback:{result})")
     return True
 
 
