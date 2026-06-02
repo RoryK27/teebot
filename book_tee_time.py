@@ -252,105 +252,61 @@ async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
 
 async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
     """
-    BRS uses a Vue autocomplete for player slots:
-    - Click the input to open dropdown
-    - For Guest: click Guest from General section immediately
-    - For named players: type surname, wait for results, click match
-    - Falls back to Select2/native if Vue approach fails
+    BRS uses Select2 with class select2-hidden-accessible.
+    Must set value via JavaScript directly — never use visibility checks.
     """
     member_id = PLAYER_IDS.get(player_name)
-    is_guest = player_name.strip().lower() == "guest"
-    surname = player_name.split(",")[0].strip() if not is_guest else ""
-    select_id = f"member_booking_form_player_{slot_num}"
-
-    print(f"    Setting player {slot_num}: {player_name}")
-
-    # Method 1: Vue autocomplete approach
-    try:
-        # Find the input for this slot - it's a text input with placeholder
-        inputs = page.locator('input[placeholder="Start typing to find player..."]')
-        count = await inputs.count()
-        print(f"    Found {count} player inputs")
-
-        if count >= slot_num - 1:
-            target = inputs.nth(slot_num - 2)
-            await target.click()
-            await page.wait_for_timeout(600)
-
-            if not is_guest:
-                await target.fill("")
-                await page.keyboard.type(surname, delay=80)
-                await page.wait_for_timeout(1500)
-
-            # Find and click the matching item in dropdown
-            SKIP = {"You and your buddies", "Other club members",
-                    "General", "Start typing to find player...", ""}
-
-            all_li = await page.locator("li").all()
-            for li in all_li:
-                try:
-                    if not await li.is_visible():
-                        continue
-                    text = (await li.text_content() or "").strip()
-                    if text in SKIP:
-                        continue
-                    if is_guest and text == "Guest":
-                        await li.click(timeout=2000)
-                        await page.wait_for_timeout(500)
-                        print(f"    ✅ Player {slot_num}: Guest (Vue)")
-                        return True
-                    if not is_guest and (text == player_name or text.startswith(surname)):
-                        await li.click(timeout=2000)
-                        await page.wait_for_timeout(500)
-                        print(f"    ✅ Player {slot_num}: {text} (Vue)")
-                        return True
-                except Exception:
-                    continue
-    except Exception as e:
-        print(f"    Vue method failed: {e}")
-
-    # Method 2: Select2/native fallback
     if not member_id:
         print(f"    ⚠️  No member ID for '{player_name}'")
         return False
 
+    select_id = f"member_booking_form_player_{slot_num}"
+    print(f"    Setting player {slot_num}: {player_name} (id:{member_id})")
+
     result = await page.evaluate(f"""
         () => {{
             const sel = document.getElementById('{select_id}');
-            if (!sel) return 'ERROR: not found';
-            // Try by value first
-            const opt = sel.querySelector('option[value="{member_id}"]');
-            if (opt) {{
-                try {{
-                    const $ = window.jQuery || window.$;
-                    if ($ && $(sel).data('select2')) {{
-                        $(sel).val('{member_id}').trigger('change');
-                        return 'OK:select2';
-                    }}
-                }} catch(e) {{}}
-                sel.value = '{member_id}';
-                sel.dispatchEvent(new Event('change', {{bubbles:true}}));
-                return 'OK:native';
-            }}
-            // Try by text for Guest
-            const allOpts = sel.querySelectorAll('option');
-            for (const o of allOpts) {{
-                if (o.textContent.trim() === '{player_name}') {{
-                    sel.value = o.value;
-                    sel.dispatchEvent(new Event('change', {{bubbles:true}}));
-                    return 'OK:by-text';
+            if (!sel) return 'ERROR: select not found';
+
+            // Verify option exists
+            const opt = Array.from(sel.options).find(o => o.value === '{member_id}');
+            if (!opt) return 'ERROR: option {member_id} not found (total options: ' + sel.options.length + ')';
+
+            // Set via Select2 jQuery plugin
+            try {{
+                const $ = window.jQuery || window.$;
+                if ($) {{
+                    $(sel).val('{member_id}').trigger('change');
+                    return 'OK:select2-jquery';
                 }}
-            }}
-            return 'ERROR: option missing';
+            }} catch(e) {{}}
+
+            // Fallback: set natively
+            sel.value = '{member_id}';
+            sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            sel.dispatchEvent(new Event('input',  {{ bubbles: true }}));
+            return 'OK:native';
         }}
     """)
 
     if 'ERROR' in result:
-        print(f"    ⚠️  Slot {slot_num} fallback: {result}")
+        print(f"    ❌ Player {slot_num}: {result}")
         return False
 
-    await page.wait_for_timeout(300)
-    print(f"    ✅ Player {slot_num}: {player_name} (fallback:{result})")
+    await page.wait_for_timeout(600)
+
+    # Verify it was set by checking the Select2 display label
+    display = await page.evaluate(f"""
+        () => {{
+            const container = document.querySelector(
+                '#select2-{select_id}-container, ' +
+                'span[aria-labelledby="select2-{select_id}-container"]'
+            );
+            return container ? container.textContent.trim() : '';
+        }}
+    """)
+
+    print(f"    ✅ Player {slot_num}: {player_name} ({result}) display='{display}'")
     return True
 
 
@@ -415,13 +371,13 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
     await page.screenshot(path=f"debug_before_confirm_{label}.png", full_page=True)
 
     for sel in [
-        'button:has-text("Create Booking")',
-        'button:has-text("CREATE BOOKING")',
+        'button.bottom-btn',
         'button:has-text("Update Booking")',
-        'button:has-text("UPDATE BOOKING")',
-        'a:has-text("Create Booking")',
+        'button:has-text("Create Booking")',
+        'button:has-text("Confirm Booking")',
         'a:has-text("Update Booking")',
-        'a:has-text("UPDATE BOOKING")',
+        'a:has-text("Create Booking")',
+        '[class*="bottom-btn"]',
         '#member_booking_form_confirm_booking',
         'button[type="submit"]',
     ]:
