@@ -262,17 +262,30 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
             const sel = document.getElementById('{select_id}');
             if (!sel) return 'ERROR: not found';
             const opt = sel.querySelector('option[value="{member_id}"]');
-            if (!opt) return 'ERROR: option {member_id} missing';
+            if (!opt) {{
+                // Try finding by text content for Guest
+                const allOpts = sel.querySelectorAll('option');
+                for (const o of allOpts) {{
+                    if (o.textContent.trim() === 'Guest') {{
+                        sel.value = o.value;
+                        sel.dispatchEvent(new Event('change', {{bubbles:true}}));
+                        const $ = window.jQuery || window.$;
+                        if ($) $(sel).val(o.value).trigger('change');
+                        return 'OK:guest-by-text';
+                    }}
+                }}
+                return 'ERROR: option {member_id} missing';
+            }}
             try {{
                 const $ = window.jQuery || window.$;
                 if ($ && $(sel).data('select2')) {{
                     $(sel).val('{member_id}').trigger('change');
-                    return 'OK';
+                    return 'OK:select2';
                 }}
             }} catch(e) {{}}
             sel.value = '{member_id}';
             sel.dispatchEvent(new Event('change', {{bubbles:true}}));
-            return 'OK';
+            return 'OK:native';
         }}
     """)
 
@@ -349,6 +362,10 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
         'button:has-text("Create Booking")',
         'button:has-text("CREATE BOOKING")',
         'button:has-text("Update Booking")',
+        'button:has-text("UPDATE BOOKING")',
+        'a:has-text("Create Booking")',
+        'a:has-text("Update Booking")',
+        'a:has-text("UPDATE BOOKING")',
         '#member_booking_form_confirm_booking',
         'button[type="submit"]',
     ]:
