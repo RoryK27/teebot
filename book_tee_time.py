@@ -162,28 +162,41 @@ async def try_click_book_now(page, fallback_times: list):
         if try_time not in content:
             continue
         try:
-            btn = page.locator(
-                f'tr:has-text("{try_time}") a:has-text("BOOK NOW")'
-            ).first
-            if await btn.count() > 0 and await btn.is_visible():
-                print(f"  🚀 BOOK NOW visible for {try_time} — clicking!")
-                await btn.click(timeout=3000)
-                await page.wait_for_load_state("domcontentloaded")
-                await page.wait_for_timeout(1500)
+            # Try multiple selectors — BRS uses "Book Now" (not "BOOK NOW")
+            # and the button has class "add-booking"
+            btn = None
+            for sel in [
+                f'tr:has-text("{try_time}") a.add-booking',
+                f'tr:has-text("{try_time}") a:has-text("Book Now")',
+                f'tr:has-text("{try_time}") a:has-text("BOOK NOW")',
+            ]:
+                candidate = page.locator(sel).first
+                if await candidate.count() > 0 and await candidate.is_visible():
+                    btn = candidate
+                    print(f"  Found button via: {sel}")
+                    break
 
-                if await page.locator('text="already booked"').count() > 0:
-                    print(f"  ✗ {try_time} already fully booked — trying next")
-                    for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
-                        try:
-                            await page.locator(sel).first.click(timeout=1500)
-                            await page.wait_for_timeout(500)
-                            break
-                        except: pass
-                    continue
+            if btn is None:
+                continue
 
-                if await page.locator('text="Booking Details"').count() > 0:
-                    print(f"  ✅ Booking form open for {try_time}")
-                    return try_time
+            print(f"  🚀 Clicking BOOK NOW for {try_time}!")
+            await btn.click(timeout=3000)
+            await page.wait_for_load_state("domcontentloaded")
+            await page.wait_for_timeout(1500)
+
+            if await page.locator('text="already booked"').count() > 0:
+                print(f"  ✗ {try_time} already fully booked — trying next")
+                for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
+                    try:
+                        await page.locator(sel).first.click(timeout=1500)
+                        await page.wait_for_timeout(500)
+                        break
+                    except: pass
+                continue
+
+            if await page.locator('text="Booking Details"').count() > 0:
+                print(f"  ✅ Booking form open for {try_time}")
+                return try_time
         except Exception as e:
             print(f"  ⚠️  Error trying {try_time}: {e}")
             continue
