@@ -1,16 +1,16 @@
 {
   "release_type": "custom",
-  "release_time": "2026-06-03T12:50",
+  "release_time": "2026-06-03T20:30",
   "bookings": [
     {
-      "day": "Friday",
-      "date": "2026-06-12",
-      "time": "17:30",
+      "day": "Saturday",
+      "date": "2026-06-13",
+      "time": "08:40",
       "players": [
         "Kirwan, Rory",
-        "Kirwan, Mary",
-        "Guest",
-        "Guest"
+        "Kirwan, Barry",
+        "Carrick, Paul",
+        "Legge, Simon"
       ],
       "fallback_window": 30,
       "fallback_interval": 10
