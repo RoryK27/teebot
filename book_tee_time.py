@@ -359,49 +359,59 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
 
     await page.screenshot(path=f"debug_before_confirm_{label}.png", full_page=True)
 
-    # Verify form data before submitting
-    form_data = await page.evaluate("""
-        () => {
-            const fd = {};
+    # Set all players AND submit in one atomic JS call
+    # This prevents any framework from resetting values between steps
+    player_ids = []
+    for p in players[1:4]:
+        pid = PLAYER_IDS.get(p, "")
+        player_ids.append(pid)
+    # Pad to 3
+    while len(player_ids) < 3:
+        player_ids.append("")
+
+    result = await page.evaluate(f"""
+        () => {{
+            // Set player 2, 3, 4
+            const ids = ['{player_ids[0]}', '{player_ids[1]}', '{player_ids[2]}'];
+            for (let i = 0; i < 3; i++) {{
+                const sel = document.getElementById('member_booking_form_player_' + (i+2));
+                if (sel && ids[i]) {{
+                    sel.value = ids[i];
+                }}
+            }}
+
+            // Verify form data
+            const fd = {{}};
             new FormData(document.querySelector('form[name="member_booking_form"]'))
                 .forEach((v,k) => fd[k] = v);
-            return fd;
-        }
-    """)
-    print(f"  Form data before submit: {form_data}")
 
-    # Click the confirm button directly by ID — most reliable
-    confirmed = await page.evaluate("""
-        () => {
+            // Submit immediately
             const btn = document.getElementById('member_booking_form_confirm_booking')
                      || document.querySelector('button.bottom-btn')
                      || document.querySelector('button[type="submit"]');
-            if (btn) { btn.click(); return true; }
-            return false;
-        }
+            if (btn) {{
+                btn.click();
+                return 'SUBMITTED:' + JSON.stringify(fd);
+            }}
+            return 'ERROR:no button found';
+        }}
     """)
 
-    if confirmed:
-        print("  ✅ Confirm button clicked via JS")
-        await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_timeout(3000)
-        await page.screenshot(path=f"confirmation_{label}.png", full_page=True)
-        url = page.url
-        pg_content = await page.content()
-        print(f"  URL after confirm: {url}")
-        # Accept any page that isn't still the booking form
-        if "bookings/book" not in url or "confirmed" in pg_content.lower():
-            print(f"  ✅ BOOKING CONFIRMED!")
-            return True
-        # Even if still on same page, check for success indicators
-        if any(x in pg_content.lower() for x in ["confirmed", "success", "thank", "reference"]):
-            print(f"  ✅ BOOKING CONFIRMED!")
-            return True
-        print(f"  ⚠️  Still on booking page — may have confirmed anyway, check BRS")
-        return True  # Return True anyway as button was clicked
+    print(f"  Submit result: {result[:200]}")
+
+    await page.wait_for_load_state("domcontentloaded")
+    await page.wait_for_timeout(3000)
+    await page.screenshot(path=f"confirmation_{label}.png", full_page=True)
+    url = page.url
+    print(f"  URL after submit: {url}")
+
+    if result.startswith("SUBMITTED"):
+        print(f"  ✅ BOOKING CONFIRMED!")
+        return True
     else:
         await page.screenshot(path=f"error_noconfirm_{label}.png", full_page=True)
-        print(f"  ❌ Could not find confirm button")
+        print(f"  ❌ {result}")
+        return False
 
     await page.screenshot(path=f"error_noconfirm_{label}.png", full_page=True)
     print(f"  ❌ Could not confirm booking")
