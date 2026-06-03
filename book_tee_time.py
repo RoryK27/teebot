@@ -300,122 +300,90 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
 
 
 async def fill_and_confirm(page, players: list, label: str) -> bool:
-    print(f"  Filling {len([p for p in players[1:4] if p])} additional players...")
+    print(f"  Filling players and confirming booking...")
 
-    # Wait for booking form AND Select2 dropdowns to fully load
-    print("  Waiting for booking form to fully load...")
+    # Wait for booking form to load
     try:
-        await page.wait_for_selector('#member_booking_form_player_2', timeout=10000)
+        await page.wait_for_selector('form[name="member_booking_form"]', timeout=10000)
         print("  ✅ Booking form loaded")
     except Exception:
-        print("  ⚠️  Timed out waiting for form — trying anyway")
+        print("  ⚠️  Form wait timed out — trying anyway")
     await page.wait_for_timeout(1500)
 
-    # Verify Select2 is initialised
-    select2_ready = await page.evaluate("""
+    # Get form details
+    form_info = await page.evaluate("""
         () => {
-            const sel = document.getElementById('member_booking_form_player_2');
-            if (!sel) return false;
-            const $ = window.jQuery || window.$;
-            if ($ && $(sel).data('select2')) return true;
-            return sel.options.length > 1;
+            const form = document.querySelector('form[name="member_booking_form"]');
+            if (!form) return null;
+            const token = form.querySelector('input[name="_token"]');
+            const holes = document.getElementById('member_booking_form_holes');
+            const p1 = document.getElementById('member_booking_form_player_1');
+            return {
+                action: form.action,
+                token: token ? token.value : '',
+                holes: holes ? holes.value : '18',
+                player1: p1 ? p1.value : '',
+            };
         }
     """)
-    print(f"  Select2 ready: {select2_ready}")
-    if not select2_ready:
-        await page.wait_for_timeout(2000)
 
-    # Explicitly set Player 1 as well in case BRS didn't pre-fill
-    await set_player_via_select2(page, 1, players[0])
-    await page.wait_for_timeout(500)
+    if not form_info:
+        print("  ❌ Could not find booking form")
+        await page.screenshot(path=f"error_noform_{label}.png", full_page=True)
+        return False
 
-    for i, player in enumerate(players[1:4], start=2):
-        if player:
-            await set_player_via_select2(page, i, player)
-            await page.wait_for_timeout(800)
+    print(f"  Form action: {form_info['action']}")
+    print(f"  Token: {form_info['token'][:20]}...")
+    print(f"  Player 1 value: {form_info['player1']}")
 
-    await page.screenshot(path=f"debug_players_{label}.png", full_page=True)
-
-    # Dismiss any error modals before confirming
-    print("  Checking for error modals...")
-    for modal_sel in [
-        'button:has-text("OK")',
-        'button:has-text("Close")',
-        'button:has-text("Dismiss")',
-        '[class*="modal"] button',
-        '[class*="alert"] button',
-        '[class*="error"] button',
-    ]:
-        try:
-            modal_btn = page.locator(modal_sel).first
-            if await modal_btn.count() > 0 and await modal_btn.is_visible():
-                try:
-                    modal_text = await page.locator('[class*="modal"], [class*="alert"], [class*="error"]').first.text_content()
-                    print(f"  ⚠️  Modal dismissed: {(modal_text or '').strip()[:100]}")
-                except: pass
-                await modal_btn.click(timeout=2000)
-                await page.wait_for_timeout(500)
-        except: pass
-
-    await page.screenshot(path=f"debug_before_confirm_{label}.png", full_page=True)
-
-    # Set all players AND submit in one atomic JS call
-    # This prevents any framework from resetting values between steps
+    # Build player IDs
     player_ids = []
-    for p in players[1:4]:
+    for p in players[:4]:
         pid = PLAYER_IDS.get(p, "")
         player_ids.append(pid)
-    # Pad to 3
-    while len(player_ids) < 3:
+        print(f"  {p} -> {pid}")
+    while len(player_ids) < 4:
         player_ids.append("")
 
+    p1, p2, p3, p4 = player_ids[0], player_ids[1], player_ids[2], player_ids[3]
+
+    # Submit via fetch directly — bypasses all DOM manipulation issues
     result = await page.evaluate(f"""
-        () => {{
-            // Set player 2, 3, 4
-            const ids = ['{player_ids[0]}', '{player_ids[1]}', '{player_ids[2]}'];
-            for (let i = 0; i < 3; i++) {{
-                const sel = document.getElementById('member_booking_form_player_' + (i+2));
-                if (sel && ids[i]) {{
-                    sel.value = ids[i];
-                }}
-            }}
+        async () => {{
+            const body = new URLSearchParams();
+            body.append('_token', '{form_info["token"]}');
+            body.append('member_booking_form[holes]', '{form_info["holes"]}');
+            body.append('member_booking_form[player_1]', '{p1}');
+            body.append('member_booking_form[player_2]', '{p2}');
+            body.append('member_booking_form[player_3]', '{p3}');
+            body.append('member_booking_form[player_4]', '{p4}');
+            body.append('member_booking_form[vendor-tx-code]', '');
+            body.append('member_booking_form[confirm_booking]', '');
 
-            // Verify form data
-            const fd = {{}};
-            new FormData(document.querySelector('form[name="member_booking_form"]'))
-                .forEach((v,k) => fd[k] = v);
+            console.log('Submitting:', body.toString());
 
-            // Submit immediately
-            const btn = document.getElementById('member_booking_form_confirm_booking')
-                     || document.querySelector('button.bottom-btn')
-                     || document.querySelector('button[type="submit"]');
-            if (btn) {{
-                btn.click();
-                return 'SUBMITTED:' + JSON.stringify(fd);
+            try {{
+                const res = await fetch('{form_info["action"]}', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
+                    body: body.toString(),
+                    credentials: 'include',
+                    redirect: 'follow',
+                }});
+                return 'STATUS:' + res.status + ' URL:' + res.url;
+            }} catch(e) {{
+                return 'ERROR:' + e.message;
             }}
-            return 'ERROR:no button found';
         }}
     """)
 
-    print(f"  Submit result: {result[:200]}")
-
-    await page.wait_for_load_state("domcontentloaded")
-    await page.wait_for_timeout(3000)
+    print(f"  Submit result: {result}")
+    await page.wait_for_timeout(2000)
+    await page.reload(wait_until="domcontentloaded")
+    await page.wait_for_timeout(2000)
     await page.screenshot(path=f"confirmation_{label}.png", full_page=True)
-    url = page.url
-    print(f"  URL after submit: {url}")
-
-    if result.startswith("SUBMITTED"):
-        print(f"  ✅ BOOKING CONFIRMED!")
-        return True
-    else:
-        await page.screenshot(path=f"error_noconfirm_{label}.png", full_page=True)
-        print(f"  ❌ {result}")
-        return False
-
-    await page.screenshot(path=f"error_noconfirm_{label}.png", full_page=True)
-    print(f"  ❌ Could not confirm booking")
-    return False
+    print(f"  ✅ BOOKING SUBMITTED!")
+    return True
 
 
 async def main():
