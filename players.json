@@ -1,14 +1,14 @@
 {
   "release_type": "custom",
-  "release_time": "2026-06-03T12:41",
+  "release_time": "2026-06-03T12:50",
   "bookings": [
     {
-      "day": "Wednesday",
-      "date": "2026-06-10",
-      "time": "12:50",
+      "day": "Friday",
+      "date": "2026-06-12",
+      "time": "17:30",
       "players": [
         "Kirwan, Rory",
-        "Guest",
+        "Carrick, Paul",
         "Guest",
         "Guest"
       ],
