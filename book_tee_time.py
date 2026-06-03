@@ -272,20 +272,9 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
             const opt = Array.from(sel.options).find(o => o.value === '{member_id}');
             if (!opt) return 'ERROR: option {member_id} not found (total options: ' + sel.options.length + ')';
 
-            // Set via Select2 jQuery plugin
-            try {{
-                const $ = window.jQuery || window.$;
-                if ($) {{
-                    $(sel).val('{member_id}').trigger('change');
-                    return 'OK:select2-jquery';
-                }}
-            }} catch(e) {{}}
-
-            // Fallback: set natively
+            // Set value directly — do NOT dispatch events as they reset the value
             sel.value = '{member_id}';
-            sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            sel.dispatchEvent(new Event('input',  {{ bubbles: true }}));
-            return 'OK:native';
+            return 'OK';
         }}
     """)
 
@@ -369,6 +358,17 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
         except: pass
 
     await page.screenshot(path=f"debug_before_confirm_{label}.png", full_page=True)
+
+    # Verify form data before submitting
+    form_data = await page.evaluate("""
+        () => {
+            const fd = {};
+            new FormData(document.querySelector('form[name="member_booking_form"]'))
+                .forEach((v,k) => fd[k] = v);
+            return fd;
+        }
+    """)
+    print(f"  Form data before submit: {form_data}")
 
     # Click the confirm button directly by ID — most reliable
     confirmed = await page.evaluate("""
