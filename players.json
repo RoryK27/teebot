@@ -9,10 +9,10 @@
       "players": [
         "Kirwan, Rory",
         "Carrick, Paul",
-        "Kelly, Edward",
-        "Lynch, Niall"
+        "Lynch, Niall",
+        "Legge, Simon"
       ],
-      "fallback_window": 10,
+      "fallback_window": 30,
       "fallback_interval": 10
     }
   ]
