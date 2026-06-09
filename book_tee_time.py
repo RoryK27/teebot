@@ -302,87 +302,109 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
 async def fill_and_confirm(page, players: list, label: str) -> bool:
     print(f"  Filling players and confirming booking...")
 
-    # Wait for booking form to load
+    # Wait for booking form
     try:
         await page.wait_for_selector('form[name="member_booking_form"]', timeout=10000)
         print("  ✅ Booking form loaded")
     except Exception:
-        print("  ⚠️  Form wait timed out — trying anyway")
-    await page.wait_for_timeout(1500)
-
-    # Get form details
-    form_info = await page.evaluate("""
-        () => {
-            const form = document.querySelector('form[name="member_booking_form"]');
-            if (!form) return null;
-            const token = form.querySelector('input[name="_token"]');
-            const holes = document.getElementById('member_booking_form_holes');
-            const p1 = document.getElementById('member_booking_form_player_1');
-            return {
-                action: form.action,
-                token: token ? token.value : '',
-                holes: holes ? holes.value : '18',
-                player1: p1 ? p1.value : '',
-            };
-        }
-    """)
-
-    if not form_info:
-        print("  ❌ Could not find booking form")
-        await page.screenshot(path=f"error_noform_{label}.png", full_page=True)
-        return False
-
-    print(f"  Form action: {form_info['action']}")
-    print(f"  Token: {form_info['token'][:20]}...")
-    print(f"  Player 1 value: {form_info['player1']}")
+        print("  ⚠️  Form wait timed out")
+    await page.wait_for_timeout(2000)
 
     # Build player IDs
     player_ids = []
     for p in players[:4]:
         pid = PLAYER_IDS.get(p, "")
         player_ids.append(pid)
-        print(f"  {p} -> {pid}")
+        print(f"    {p} -> {pid}")
     while len(player_ids) < 4:
         player_ids.append("")
 
-    p1, p2, p3, p4 = player_ids[0], player_ids[1], player_ids[2], player_ids[3]
+    p1 = player_ids[0]
+    p2 = player_ids[1]
+    p3 = player_ids[2]
+    p4 = player_ids[3]
 
-    # Submit via fetch directly — bypasses all DOM manipulation issues
+    # Set all players and click submit in one atomic JS call
     result = await page.evaluate(f"""
-        async () => {{
-            const body = new URLSearchParams();
-            body.append('_token', '{form_info["token"]}');
-            body.append('member_booking_form[holes]', '{form_info["holes"]}');
-            body.append('member_booking_form[player_1]', '{p1}');
-            body.append('member_booking_form[player_2]', '{p2}');
-            body.append('member_booking_form[player_3]', '{p3}');
-            body.append('member_booking_form[player_4]', '{p4}');
-            body.append('member_booking_form[vendor-tx-code]', '');
-            body.append('member_booking_form[confirm_booking]', '');
-
-            console.log('Submitting:', body.toString());
-
-            try {{
-                const res = await fetch('{form_info["action"]}', {{
-                    method: 'POST',
-                    headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
-                    body: body.toString(),
-                    credentials: 'include',
-                    redirect: 'follow',
-                }});
-                return 'STATUS:' + res.status + ' URL:' + res.url;
-            }} catch(e) {{
-                return 'ERROR:' + e.message;
+        () => {{
+            // Set player values
+            const fields = [
+                ['member_booking_form_player_1', '{p1}'],
+                ['member_booking_form_player_2', '{p2}'],
+                ['member_booking_form_player_3', '{p3}'],
+                ['member_booking_form_player_4', '{p4}'],
+            ];
+            const results = [];
+            for (const [id, val] of fields) {{
+                const el = document.getElementById(id);
+                if (el && val) {{
+                    el.value = val;
+                    results.push(id + '=' + el.value);
+                }}
             }}
+
+            // Verify via FormData
+            const fd = {{}};
+            const form = document.querySelector('form[name="member_booking_form"]');
+            new FormData(form).forEach((v,k) => fd[k] = v);
+
+            // Click submit
+            const btn = document.getElementById('member_booking_form_confirm_booking')
+                     || document.querySelector('button.bottom-btn')
+                     || document.querySelector('button[type="submit"]');
+            if (btn) {{
+                btn.click();
+                return 'CLICKED set=' + results.join(',') + ' fd_p2=' + (fd['member_booking_form[player_2]'] || 'EMPTY');
+            }}
+            return 'ERROR: no submit button';
         }}
     """)
 
-    print(f"  Submit result: {result}")
-    await page.wait_for_timeout(2000)
-    await page.reload(wait_until="domcontentloaded")
-    await page.wait_for_timeout(2000)
+    print(f"  Submit: {result}")
+
+    # Wait for page to change
+    await page.wait_for_timeout(4000)
     await page.screenshot(path=f"confirmation_{label}.png", full_page=True)
-    print(f"  ✅ BOOKING SUBMITTED!")
+    url = page.url
+    content_after = await page.content()
+    print(f"  URL after: {url}")
+
+    # Check if still on booking form — if so the submission failed
+    if "bookings/book" in url:
+        # Check for error modal
+        error_text = await page.evaluate("""
+            () => {
+                const modal = document.querySelector('.modal, [class*="modal"], [role="dialog"]');
+                return modal ? modal.textContent.trim().substring(0, 200) : '';
+            }
+        """)
+        if error_text:
+            print(f"  ⚠️  Modal: {error_text[:150]}")
+            # Dismiss and try submitting the form natively
+            await page.evaluate("""
+                () => {
+                    const ok = document.querySelector('button:not(.bottom-btn)');
+                    if (ok) ok.click();
+                }
+            """)
+            await page.wait_for_timeout(500)
+
+        # Try native form submit as fallback
+        print("  Trying native form submit...")
+        await page.evaluate(f"""
+            () => {{
+                document.getElementById('member_booking_form_player_2').value = '{p2}';
+                document.getElementById('member_booking_form_player_3').value = '{p3}';
+                document.getElementById('member_booking_form_player_4').value = '{p4}';
+                document.querySelector('form[name="member_booking_form"]').submit();
+            }}
+        """)
+        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_timeout(3000)
+        await page.screenshot(path=f"confirmation2_{label}.png", full_page=True)
+        print(f"  URL after native submit: {page.url}")
+
+    print(f"  ✅ BOOKING COMPLETE — check BRS for confirmation")
     return True
 
 
