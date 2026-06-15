@@ -1,16 +1,16 @@
 {
-  "release_type": "custom",
-  "release_time": "2026-06-15T14:15",
+  "release_type": "default",
+  "release_time": null,
   "bookings": [
     {
       "day": "Friday",
       "date": "2026-06-19",
-      "time": "17:50",
+      "time": "08:20",
       "players": [
         "Kirwan, Rory",
-        "Guest",
-        "Guest",
-        "Guest"
+        "Kelly, Edward",
+        "Lynch, Niall",
+        "Legge, Simon"
       ],
       "fallback_window": 30,
       "fallback_interval": 10
