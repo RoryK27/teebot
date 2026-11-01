@@ -545,7 +545,8 @@ async def main():
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page    = await browser.new_page(viewport={"width": 1280, "height": 900})
+        context = await browser.new_context(viewport={"width": 1280, "height": 900})
+        page    = await context.new_page()
 
         try:
             await login(page)
