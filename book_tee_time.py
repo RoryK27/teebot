@@ -284,7 +284,7 @@ async def tab_worker(page, tab_no, fallback_times, release_dt, deadline,
         except Exception:
             pass
         if found.is_set():
-            return
+            return attempt
 
         rel = (datetime.utcnow() - release_dt).total_seconds()
         if await page.locator('a.add-booking').count() > 0:
@@ -293,7 +293,7 @@ async def tab_worker(page, tab_no, fallback_times, release_dt, deadline,
                 seen_buttons = True
             async with lock:
                 if found.is_set():
-                    return
+                    return attempt
                 t = await try_click_book_now(page, fallback_times)
                 if t:
                     result["page"] = page
@@ -301,9 +301,10 @@ async def tab_worker(page, tab_no, fallback_times, release_dt, deadline,
                     found.set()
                     rel = (datetime.utcnow() - release_dt).total_seconds()
                     print(f"  ✅ Grabbed {t} at {rel:+.1f}s from release (tab {tab_no+1}, attempt {attempt})")
-                    return
-        elif tab_no == 0 and attempt % 5 == 0:
-            print(f"  ⏳ {rel:+.0f}s from release, attempt {attempt} (no Book Now yet)")
+                    return attempt
+        if tab_no == 0 and attempt % 10 == 0:
+            print(f"  ⏳ {rel:+.0f}s from release, tab 1 attempt {attempt} — your times not bookable yet")
+    return attempt
 
 
 async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
@@ -329,10 +330,16 @@ async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
     found = asyncio.Event()
     lock = asyncio.Lock()
     result = {}
-    await asyncio.gather(*[
+    t_start = datetime.utcnow()
+    counts = await asyncio.gather(*[
         tab_worker(pg, i, fallback_times, release_dt, deadline, found, result, lock)
         for i, pg in enumerate(pages)
     ])
+    secs_run = (datetime.utcnow() - t_start).total_seconds()
+    total = sum(c or 0 for c in counts)
+    if total:
+        print(f"  📊 {total} refreshes in {secs_run:.0f}s across {len(pages)} tabs "
+              f"= one fresh check every {secs_run/total:.2f}s")
 
     if result.get("page"):
         return result["page"]
