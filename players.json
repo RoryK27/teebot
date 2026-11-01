@@ -1,16 +1,16 @@
 {
   "release_type": "custom",
-  "release_time": "2026-11-01T17:24",
+  "release_time": "2026-11-01T17:31",
   "bookings": [
     {
-      "day": "Friday",
-      "date": "2026-11-06",
-      "time": "15:00",
+      "day": "Sunday",
+      "date": "2026-11-08",
+      "time": "08:30",
       "players": [
         "Kirwan, Rory",
-        "Kirwan, Mary",
         "Kirwan, Barry",
-        "Kirwan, Lisa"
+        "Kelly, Edward",
+        "Lynch, Niall"
       ],
       "fallback_window": 30,
       "fallback_interval": 10
