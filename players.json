@@ -1,18 +1,18 @@
 {
-  "release_type": "default",
-  "release_time": null,
+  "release_type": "custom",
+  "release_time": "2026-11-01T16:27",
   "bookings": [
     {
-      "day": "Thursday",
-      "date": "2026-07-09",
-      "time": "17:40",
+      "day": "Friday",
+      "date": "2026-11-06",
+      "time": "15:00",
       "players": [
         "Kirwan, Rory",
-        "Carrick, Paul",
-        "Kelly, Edward",
-        "Lynch, Niall"
+        "Guest",
+        "Guest",
+        "Guest"
       ],
-      "fallback_window": 10,
+      "fallback_window": 30,
       "fallback_interval": 10
     }
   ]
