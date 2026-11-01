@@ -161,9 +161,26 @@ async def navigate_to_date(page, target_dt: datetime):
     global DATE_CODE, TEE_SHEET_URL
     DATE_CODE = target_dt.strftime('%Y%m%d')
     TEE_SHEET_URL = f"{TEE_SHEET_BASE}/{target_dt.strftime('%Y/%m/%d')}"
+    t0 = datetime.utcnow()
     await page.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
-    await page.wait_for_timeout(1500)
     print(f"  ✅ On tee sheet: {target_dt.strftime('%A %d %B')}")
+
+    # DIAGNOSTIC: what does the bot actually see, and how long do buttons take?
+    try:
+        await page.wait_for_selector('a.add-booking', state="attached", timeout=15000)
+        secs = (datetime.utcnow() - t0).total_seconds()
+        print(f"  🔎 Book Now buttons appeared {secs:.1f}s after opening the page")
+    except Exception:
+        print(f"  🔎 No Book Now buttons found within 15s")
+    try:
+        n = await page.locator('a.add-booking').count()
+        title = await page.title()
+        body = (await page.inner_text("body"))[:400].replace("\n", " | ")
+        print(f"  🔎 URL: {page.url}")
+        print(f"  🔎 Title: {title} | a.add-booking count: {n}")
+        print(f"  🔎 Page text: {body}")
+    except Exception as e:
+        print(f"  🔎 Diagnostic error: {e}")
 
 
 async def try_click_book_now(page, fallback_times: list):
@@ -175,7 +192,7 @@ async def try_click_book_now(page, fallback_times: list):
     global _reported_buttons
 
     try:
-        await page.wait_for_selector('a.add-booking', state="attached", timeout=1500)
+        await page.wait_for_selector('a.add-booking', state="attached", timeout=4000)
     except Exception:
         return None  # no Book Now buttons on the page (yet)
 
