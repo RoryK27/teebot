@@ -256,51 +256,88 @@ async def try_click_book_now(page, fallback_times: list):
     return None
 
 
-async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
-                              release_dt: datetime) -> bool:
-    deadline = release_dt + timedelta(seconds=TIMEOUT_AFTER_RELEASE)
+RENDER_WAIT_JS = """
+() => {
+    if (document.querySelector('a.add-booking')) return true;
+    const times = (document.body.innerText || '').match(/[0-9][0-9]:[0-9][0-9]/g);
+    return times && times.length > 10;
+}
+"""
+NUM_TABS = 3  # parallel tabs refreshing the tee sheet, staggered
+
+
+async def tab_worker(page, tab_no, fallback_times, release_dt, deadline,
+                     found, result, lock):
+    """One tab: reload, wait for the sheet to finish drawing, look for Book Now."""
+    await asyncio.sleep(tab_no * 0.5)  # stagger tabs so one is always fresh
     attempt = 0
-
-    print(f"  Checking if slots already available...")
-    booked_time = await try_click_book_now(page, fallback_times)
-    if booked_time:
-        return True
-
-    secs_to_release = (release_dt - datetime.utcnow()).total_seconds()
-    if secs_to_release > 0:
-        print(f"  ⏳ {secs_to_release:.0f}s to release at {release_dt.strftime('%H:%M:%S')} — hammering refresh...")
-    else:
-        print(f"  Slots not yet visible — refreshing...")
-
-    while datetime.now() < deadline:
+    seen_buttons = False
+    while datetime.utcnow() < deadline and not found.is_set():
         attempt += 1
         try:
             await page.reload(wait_until="domcontentloaded", timeout=8000)
         except Exception:
             await asyncio.sleep(0.2)
             continue
+        try:
+            await page.wait_for_function(RENDER_WAIT_JS, timeout=2500, polling=100)
+        except Exception:
+            pass
+        if found.is_set():
+            return
 
-        booked_time = await try_click_book_now(page, fallback_times)
-        if booked_time:
-            elapsed = (datetime.utcnow() - release_dt).total_seconds()
-            print(f"  ✅ Grabbed {booked_time} at {elapsed:+.1f}s from release (attempt {attempt})")
-            return True
+        rel = (datetime.utcnow() - release_dt).total_seconds()
+        if await page.locator('a.add-booking').count() > 0:
+            if not seen_buttons:
+                print(f"  👀 Tab {tab_no+1}: Book Now buttons visible at {rel:+.1f}s from release")
+                seen_buttons = True
+            async with lock:
+                if found.is_set():
+                    return
+                t = await try_click_book_now(page, fallback_times)
+                if t:
+                    result["page"] = page
+                    result["time"] = t
+                    found.set()
+                    rel = (datetime.utcnow() - release_dt).total_seconds()
+                    print(f"  ✅ Grabbed {t} at {rel:+.1f}s from release (tab {tab_no+1}, attempt {attempt})")
+                    return
+        elif tab_no == 0 and attempt % 5 == 0:
+            print(f"  ⏳ {rel:+.0f}s from release, attempt {attempt} (no Book Now yet)")
 
-        secs_to_release = (release_dt - datetime.utcnow()).total_seconds()
-        if secs_to_release > 5:
-            if attempt % 10 == 0:
-                print(f"  ⏳ {secs_to_release:.0f}s to release (attempt {attempt})")
-            await asyncio.sleep(REFRESH_INTERVAL_SECS)
-        elif secs_to_release > 0:
-            await asyncio.sleep(0.1)
-        else:
-            secs_past = abs(secs_to_release)
-            if attempt % 5 == 0:
-                print(f"  ⏳ +{secs_past:.0f}s past release, attempt {attempt}")
-            await asyncio.sleep(0.3)
 
+async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
+                              release_dt: datetime):
+    """Returns the page with the booking form open, or None."""
+    deadline = release_dt + timedelta(seconds=TIMEOUT_AFTER_RELEASE)
+
+    print(f"  Checking if slots already available...")
+    booked_time = await try_click_book_now(page, fallback_times)
+    if booked_time:
+        return page
+
+    # Open extra tabs (same login) so the sheet is refreshed every ~0.5s
+    pages = [page]
+    for _ in range(NUM_TABS - 1):
+        extra = await page.context.new_page()
+        await extra.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
+        pages.append(extra)
+
+    secs = (release_dt - datetime.utcnow()).total_seconds()
+    print(f"  ⏳ {secs:.0f}s to release — {len(pages)} tabs refreshing...")
+
+    found = asyncio.Event()
+    lock = asyncio.Lock()
+    result = {}
+    await asyncio.gather(*[
+        tab_worker(pg, i, fallback_times, release_dt, deadline, found, result, lock)
+        for i, pg in enumerate(pages)
+    ])
+
+    if result.get("page"):
+        return result["page"]
     print(f"  ❌ Timed out — no slot found after {TIMEOUT_AFTER_RELEASE}s past release")
-    return False
+    return None
 
 
 async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
@@ -535,10 +572,10 @@ async def main():
             await navigate_to_date(page, target_dt)
             await page.screenshot(path=f"debug_teesheet_{label}.png", full_page=True)
 
-            booked = await wait_and_grab_slot(page, time, fallback_times, release_dt)
+            booked_page = await wait_and_grab_slot(page, time, fallback_times, release_dt)
 
-            if booked:
-                await fill_and_confirm(page, players, label)
+            if booked_page:
+                await fill_and_confirm(booked_page, players, label)
             else:
                 await page.screenshot(path=f"error_noslot_{label}.png", full_page=True)
 
