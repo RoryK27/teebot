@@ -146,15 +146,31 @@ def build_fallback_times(preferred: str, window: int, interval: int) -> list:
 async def login(page):
     print("  Logging in...")
     await page.goto(BRS_LOGIN_URL, wait_until="domcontentloaded")
+    await page.wait_for_selector('input[type="password"]', timeout=15000)
+    await page.wait_for_timeout(1000)
+
+    user_box = page.locator('input[name="username"]')
+    if await user_box.count() == 0:
+        user_box = page.locator('input[type="text"], input[type="email"]')
+    await user_box.first.fill(BRS_EMAIL)
+    await page.locator('input[type="password"]').first.fill(BRS_PASSWORD)
+    print(f"  Username entered: {len(BRS_EMAIL)} characters | Password entered: {len(BRS_PASSWORD)} characters")
+
+    await page.locator('input[type="password"]').first.press("Enter")
+
+    # Wait until we have actually left the login page
+    try:
+        await page.wait_for_url(lambda u: "/login" not in u, timeout=15000)
+    except Exception:
+        pass
     await page.wait_for_timeout(1500)
-    await page.fill('input[name="username"], input[type="text"]', BRS_EMAIL)
-    await page.fill('input[type="password"]', BRS_PASSWORD)
-    await page.click('button:has-text("LOGIN")')
-    await page.wait_for_load_state("domcontentloaded")
-    await page.wait_for_timeout(2000)
-    if "beaverstown" not in page.url:
-        raise Exception("Login failed — check BRS_EMAIL / BRS_PASSWORD secrets")
-    print("  ✅ Logged in")
+
+    if "/login" in page.url:
+        body = (await page.inner_text("body"))[:400].replace("\n", " | ")
+        print(f"  🔎 Still on login page: {page.url}")
+        print(f"  🔎 Page says: {body}")
+        raise Exception("Login failed — see 'Page says' above")
+    print(f"  ✅ Logged in (now on {page.url})")
 
 
 async def navigate_to_date(page, target_dt: datetime):
