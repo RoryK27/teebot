@@ -4,6 +4,11 @@ Each GitHub Actions job runs this script with a different BOOKING_INDEX,
 so every booking runs as a completely independent parallel job.
 Speed-optimised: logs in early, sits on tee sheet, hammers refresh,
 clicks BOOK NOW the instant it appears.
+
+Nov 2026 fix: BRS draws the tee sheet with JavaScript AFTER the page loads,
+so the bot now waits for the Book Now buttons to appear, finds the right
+button by its link (which ends /YYYYMMDD/HHMM), and clicks it without
+visibility checks.
 """
 
 import asyncio, os, json, urllib.request
@@ -38,6 +43,11 @@ PRE_RELEASE_WAIT_SECS = 90
 REFRESH_INTERVAL_SECS = 0.5
 TIMEOUT_AFTER_RELEASE = 300  # 5 minutes after release before giving up
 
+# Set when the bot opens the tee sheet
+DATE_CODE        = ""     # e.g. "20261106"
+TEE_SHEET_URL    = ""
+_reported_buttons = False
+
 
 def load_players_json():
     """Load the full players.json file and return it."""
@@ -64,8 +74,6 @@ def get_release_time(data: dict) -> datetime:
     - Custom release_time from players.json is in Irish local time — convert to UTC
     - Default is 20:30 Irish time = 19:30 UTC summer / 20:30 UTC winter
     """
-    import time as _time
-
     now = datetime.utcnow()
 
     # Detect if Ireland is currently on summer time (UTC+1)
@@ -150,56 +158,68 @@ async def login(page):
 
 
 async def navigate_to_date(page, target_dt: datetime):
-    url = f"{TEE_SHEET_BASE}/{target_dt.strftime('%Y/%m/%d')}"
-    await page.goto(url, wait_until="domcontentloaded")
+    global DATE_CODE, TEE_SHEET_URL
+    DATE_CODE = target_dt.strftime('%Y%m%d')
+    TEE_SHEET_URL = f"{TEE_SHEET_BASE}/{target_dt.strftime('%Y/%m/%d')}"
+    await page.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
     await page.wait_for_timeout(1500)
     print(f"  ✅ On tee sheet: {target_dt.strftime('%A %d %B')}")
 
 
 async def try_click_book_now(page, fallback_times: list):
-    content = await page.content()
+    """
+    BRS draws the tee sheet with JavaScript after the page loads, so wait
+    briefly for Book Now buttons to exist. Each button's link ends with
+    /YYYYMMDD/HHMM, which identifies the exact tee time.
+    """
+    global _reported_buttons
+
+    try:
+        await page.wait_for_selector('a.add-booking', state="attached", timeout=1500)
+    except Exception:
+        return None  # no Book Now buttons on the page (yet)
+
+    if not _reported_buttons:
+        n = await page.locator('a.add-booking').count()
+        print(f"  👀 Tee sheet shows {n} Book Now buttons")
+        _reported_buttons = True
+
     for try_time in fallback_times:
-        if try_time not in content:
+        hhmm = try_time.replace(":", "")
+        link = page.locator(f'a.add-booking[href*="/{DATE_CODE}/{hhmm}"]').first
+        if await link.count() == 0:
             continue
+
+        print(f"  🚀 Book Now found for {try_time} — clicking")
         try:
-            # Try multiple selectors — BRS uses "Book Now" (not "BOOK NOW")
-            # and the button has class "add-booking"
-            btn = None
-            for sel in [
-                f'tr:has-text("{try_time}") a.add-booking',
-                f'tr:has-text("{try_time}") a:has-text("Book Now")',
-                f'tr:has-text("{try_time}") a:has-text("BOOK NOW")',
-            ]:
-                candidate = page.locator(sel).first
-                if await candidate.count() > 0 and await candidate.is_visible():
-                    btn = candidate
-                    print(f"  Found button via: {sel}")
-                    break
+            try:
+                await link.click(force=True, timeout=3000)
+            except Exception as e:
+                href = await link.get_attribute("href")
+                print(f"  Click failed ({e}) — opening link directly")
+                if href.startswith("/"):
+                    href = "https://members.brsgolf.com" + href
+                await page.goto(href, wait_until="domcontentloaded")
 
-            if btn is None:
-                continue
-
-            print(f"  🚀 Clicking BOOK NOW for {try_time}!")
-            await btn.click(timeout=3000)
-            await page.wait_for_load_state("domcontentloaded")
-            await page.wait_for_timeout(1500)
-
-            if await page.locator('text="already booked"').count() > 0:
-                print(f"  ✗ {try_time} already fully booked — trying next")
-                for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
-                    try:
-                        await page.locator(sel).first.click(timeout=1500)
-                        await page.wait_for_timeout(500)
-                        break
-                    except: pass
-                continue
-
-            if await page.locator('text="Booking Details"').count() > 0:
+            try:
+                await page.wait_for_selector('form[name="member_booking_form"]',
+                                             state="attached", timeout=8000)
                 print(f"  ✅ Booking form open for {try_time}")
                 return try_time
+            except Exception:
+                body = (await page.inner_text("body"))[:200].replace("\n", " ")
+                print(f"  ✗ {try_time} did not open booking form. URL: {page.url} | Page says: {body}")
+                await page.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
+                continue
+
         except Exception as e:
             print(f"  ⚠️  Error trying {try_time}: {e}")
+            try:
+                await page.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
+            except Exception:
+                pass
             continue
+
     return None
 
 
