@@ -1,16 +1,13 @@
 {
   "release_type": "custom",
-  "release_time": "2026-11-02T21:06",
+  "release_time": "2026-11-02T21:13",
   "bookings": [
     {
-      "day": "Friday",
-      "date": "2026-11-06",
-      "time": "15:00",
+      "day": "Sunday",
+      "date": "2026-11-15",
+      "time": "08:40",
       "players": [
-        "Kirwan, Rory",
-        "Kirwan, Mary",
-        "Guest",
-        "Guest"
+        "Kirwan, Rory"
       ],
       "fallback_window": 20,
       "fallback_interval": 10
