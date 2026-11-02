@@ -11,7 +11,7 @@ button by its link (which ends /YYYYMMDD/HHMM), and clicks it without
 visibility checks.
 """
 
-import asyncio, os, json, urllib.request
+import asyncio, os, json, re, urllib.request
 from datetime import datetime, timedelta
 from playwright.async_api import async_playwright
 
@@ -308,7 +308,7 @@ async def tab_worker(page, tab_no, fallback_times, release_dt, deadline,
     return attempt
 
 
-async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
+async def wait_and_grab_slot_tabs(page, preferred_time: str, fallback_times: list,
                               release_dt: datetime):
     """Returns the page with the booking form open, or None."""
     deadline = release_dt + timedelta(seconds=TIMEOUT_AFTER_RELEASE)
@@ -345,6 +345,157 @@ async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
     if result.get("page"):
         return result["page"]
     print(f"  ❌ Timed out — no slot found after {TIMEOUT_AFTER_RELEASE}s past release")
+    return None
+
+
+API_FETCH_JS = """
+async (u) => {
+    const r = await fetch(u, {credentials: 'same-origin',
+        headers: {'Accept': 'application/json, text/plain, */*',
+                  'X-Requested-With': 'XMLHttpRequest'}});
+    return [r.status, await r.text()];
+}
+"""
+
+
+def collect_slots(obj, out):
+    """Find every "HH:MM": {"tee_time": {...}} entry anywhere in the JSON."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if (isinstance(k, str) and re.fullmatch(r"\d{2}:\d{2}", k)
+                    and isinstance(v, dict) and isinstance(v.get("tee_time"), dict)):
+                out[k] = v["tee_time"]
+            else:
+                collect_slots(v, out)
+    elif isinstance(obj, list):
+        for v in obj:
+            collect_slots(v, out)
+
+
+def poll_interval(rel):
+    if rel < -10:
+        return 1.0    # calm until 10s before release
+    if rel < 60:
+        return 0.15   # flat out around the release
+    return 0.5
+
+
+async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
+                              release_dt: datetime):
+    """
+    FAST MODE: ask BRS for the tee sheet data directly (~0.2s per check)
+    instead of waiting ~1.1s for the page to draw. Falls back to the
+    3-tab method if the data feed doesn't work.
+    Returns the page with the booking form open, or None.
+    """
+    data_base = TEE_SHEET_URL.replace("/tee-sheet/1/", "/tee-sheet/data/1/")
+    deadline = release_dt + timedelta(seconds=TIMEOUT_AFTER_RELEASE)
+
+    def rel():
+        return (datetime.utcnow() - release_dt).total_seconds()
+
+    async def fetch_slots():
+        url = f"{data_base}?_={int(datetime.utcnow().timestamp()*1000)}"
+        status, text = await page.evaluate(API_FETCH_JS, url)
+        if status != 200:
+            raise Exception(f"HTTP {status}")
+        slots = {}
+        collect_slots(json.loads(text), slots)
+        return slots
+
+    # Probe the data feed once
+    try:
+        slots = await fetch_slots()
+        if not slots:
+            raise Exception("no tee times found in data")
+        print(f"  ⚡ Fast mode: data feed OK ({len(slots)} tee times)")
+    except Exception as e:
+        print(f"  ⚠️  Data feed not usable ({e}) — using 3-tab mode")
+        return await wait_and_grab_slot_tabs(page, preferred_time, fallback_times, release_dt)
+
+    failed = set()
+    found = asyncio.Event()
+    hit = {}
+    stats = {"ok": 0, "bad": 0, "streak": 0}
+    inflight = set()
+
+    def pick(slots):
+        for t in fallback_times:
+            if t in failed:
+                continue
+            tt = slots.get(t)
+            if tt and tt.get("bookable") and tt.get("url"):
+                return t, tt["url"]
+        return None
+
+    async def one_check():
+        try:
+            sl = await fetch_slots()
+            stats["ok"] += 1
+            stats["streak"] = 0
+        except Exception:
+            stats["bad"] += 1
+            stats["streak"] += 1
+            return
+        got = pick(sl)
+        if got and not found.is_set():
+            hit["time"], hit["url"], hit["seen"] = got[0], got[1], rel()
+            found.set()
+
+    got = pick(slots)
+    if got:
+        hit["time"], hit["url"], hit["seen"] = got[0], got[1], rel()
+        found.set()
+
+    print(f"  ⏳ {-rel():.0f}s to release — checking data feed...")
+    last_log = 0.0
+    while datetime.utcnow() < deadline:
+        if not found.is_set():
+            if len(inflight) < 6:
+                task = asyncio.create_task(one_check())
+                inflight.add(task)
+                task.add_done_callback(inflight.discard)
+            try:
+                await asyncio.wait_for(found.wait(), timeout=poll_interval(rel()))
+            except asyncio.TimeoutError:
+                pass
+            if stats["streak"] >= 10:
+                print(f"  ⚠️  Data feed failing at {rel():+.1f}s — switching to 3-tab mode")
+                await page.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
+                return await wait_and_grab_slot_tabs(page, preferred_time, fallback_times, release_dt)
+            if rel() - last_log >= 10:
+                last_log = rel()
+                print(f"  ⏳ {rel():+.0f}s from release — {stats['ok']} checks, your times not bookable yet")
+            continue
+
+        t, url = hit["time"], hit["url"]
+        if url.startswith("/"):
+            url = "https://members.brsgolf.com" + url
+        print(f"  👀 {t} became bookable — seen at {hit['seen']:+.2f}s from release")
+        print(f"  🚀 Opening Book Now link for {t} at {rel():+.2f}s")
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=10000)
+            await page.wait_for_selector('form[name="member_booking_form"]',
+                                         state="attached", timeout=8000)
+            print(f"  ✅ Booking form open for {t} at {rel():+.2f}s "
+                  f"({stats['ok']} checks, {stats['bad']} failed)")
+            return page
+        except Exception:
+            try:
+                body = (await page.inner_text("body"))[:200].replace("\n", " ")
+            except Exception:
+                body = "?"
+            print(f"  ✗ {t} did not open booking form at {rel():+.2f}s. Page says: {body}")
+            failed.add(t)
+            hit.clear()
+            found.clear()
+            try:
+                await page.goto(TEE_SHEET_URL, wait_until="domcontentloaded")
+            except Exception:
+                pass
+
+    print(f"  ❌ Timed out — no slot found after {TIMEOUT_AFTER_RELEASE}s past release "
+          f"({stats['ok']} checks, {stats['bad']} failed)")
     return None
 
 
