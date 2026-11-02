@@ -45,6 +45,7 @@ TIMEOUT_AFTER_RELEASE = 300  # 5 minutes after release before giving up
 
 # Set when the bot opens the tee sheet
 DATE_CODE        = ""     # e.g. "20261106"
+RELEASE_DT       = None
 TEE_SHEET_URL    = ""
 _reported_buttons = False
 
@@ -399,22 +400,39 @@ async def set_player_via_select2(page, slot_num: int, player_name: str) -> bool:
 async def fill_and_confirm(page, players: list, label: str) -> bool:
     print(f"  Filling players and confirming booking...")
 
-    # Wait for booking form
-    try:
-        await page.wait_for_selector('form[name="member_booking_form"]', timeout=10000)
-        print("  ✅ Booking form loaded")
-    except Exception:
-        print("  ⚠️  Form wait timed out")
-    await page.wait_for_timeout(2000)
+    def rel():
+        return (datetime.utcnow() - RELEASE_DT).total_seconds() if RELEASE_DT else 0.0
 
     # Build player IDs
     player_ids = []
     for p in players[:4]:
         pid = PLAYER_IDS.get(p, "")
         player_ids.append(pid)
-        print(f"    {p} -> {pid}")
     while len(player_ids) < 4:
         player_ids.append("")
+
+    # Wait only until the form and every player we need is selectable
+    # (replaces the old fixed 2-second pause)
+    ready_js = """
+        (ids) => {
+            const btn = document.getElementById('member_booking_form_confirm_booking');
+            if (!btn) return false;
+            for (let i = 0; i < 4; i++) {
+                if (!ids[i]) continue;
+                const sel = document.getElementById('member_booking_form_player_' + (i + 1));
+                if (!sel) return false;
+                if (!Array.from(sel.options).some(o => o.value === ids[i])) return false;
+            }
+            return true;
+        }
+    """
+    try:
+        await page.wait_for_function(ready_js, arg=player_ids, timeout=5000, polling=50)
+        print(f"  ✅ Form ready at {rel():+.1f}s from release")
+    except Exception:
+        print(f"  ⚠️  Form not fully ready after 5s ({rel():+.1f}s) — submitting anyway")
+    for p, pid in zip(players[:4], player_ids):
+        print(f"    {p} -> {pid}")
 
     p1 = player_ids[0]
     p2 = player_ids[1]
@@ -457,7 +475,7 @@ async def fill_and_confirm(page, players: list, label: str) -> bool:
         }}
     """)
 
-    print(f"  Submit: {result}")
+    print(f"  Submit at {rel():+.1f}s from release: {result}")
 
     # Wait for page to change
     await page.wait_for_timeout(4000)
@@ -529,6 +547,8 @@ async def main():
     target_dt      = get_target_date(booking)
     fallback_times = build_fallback_times(time, window, interval)
     release_dt     = get_release_time(data)  # reads from players.json or defaults to 20:30
+    global RELEASE_DT
+    RELEASE_DT     = release_dt
     label          = f"{day.lower()[:3]}_{time.replace(':','')}"
 
     print("=" * 54)
