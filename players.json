@@ -12,7 +12,7 @@
         "Lynch, Niall",
         "Kelly, Edward"
       ],
-      "fallback_window": 10,
+      "fallback_window": 20,
       "fallback_interval": 10
     }
   ]
