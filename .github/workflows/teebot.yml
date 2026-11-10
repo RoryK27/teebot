@@ -29,6 +29,10 @@ jobs:
         env:
           BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
           BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+          BRS_EMAIL_BARRY: ${{ secrets.BRS_EMAIL_BARRY }}
+          BRS_PASSWORD_BARRY: ${{ secrets.BRS_PASSWORD_BARRY }}
+          BRS_EMAIL_MARY: ${{ secrets.BRS_EMAIL_MARY }}
+          BRS_PASSWORD_MARY: ${{ secrets.BRS_PASSWORD_MARY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "0"
@@ -67,6 +71,10 @@ jobs:
         env:
           BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
           BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+          BRS_EMAIL_BARRY: ${{ secrets.BRS_EMAIL_BARRY }}
+          BRS_PASSWORD_BARRY: ${{ secrets.BRS_PASSWORD_BARRY }}
+          BRS_EMAIL_MARY: ${{ secrets.BRS_EMAIL_MARY }}
+          BRS_PASSWORD_MARY: ${{ secrets.BRS_PASSWORD_MARY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "1"
@@ -105,6 +113,10 @@ jobs:
         env:
           BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
           BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+          BRS_EMAIL_BARRY: ${{ secrets.BRS_EMAIL_BARRY }}
+          BRS_PASSWORD_BARRY: ${{ secrets.BRS_PASSWORD_BARRY }}
+          BRS_EMAIL_MARY: ${{ secrets.BRS_EMAIL_MARY }}
+          BRS_PASSWORD_MARY: ${{ secrets.BRS_PASSWORD_MARY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "2"
@@ -143,6 +155,10 @@ jobs:
         env:
           BRS_EMAIL: ${{ secrets.BRS_EMAIL }}
           BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+          BRS_EMAIL_BARRY: ${{ secrets.BRS_EMAIL_BARRY }}
+          BRS_PASSWORD_BARRY: ${{ secrets.BRS_PASSWORD_BARRY }}
+          BRS_EMAIL_MARY: ${{ secrets.BRS_EMAIL_MARY }}
+          BRS_PASSWORD_MARY: ${{ secrets.BRS_PASSWORD_MARY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BOOKING_INDEX: "3"
