@@ -204,9 +204,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
   <div class="card">
     <div class="card-title">📋 Summary</div>
     <table class="summary-table">
-      <thead><tr><th>Date</th><th>Time</th><th>Players</th><th>Status</th></tr></thead>
+      <thead><tr><th>Date</th><th>Time</th><th>Booked by</th><th>Players</th><th>Status</th></tr></thead>
       <tbody id="summaryBody">
-        <tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots configured</td></tr>
+        <tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots configured</td></tr>
       </tbody>
     </table>
   </div>
@@ -241,6 +241,13 @@ for (let h = 6; h <= 20; h++) {
   }
 }
 
+const ACCOUNTS = [
+  { key: 'rory',  name: 'Kirwan, Rory' },
+  { key: 'barry', name: 'Kirwan, Barry' },
+  { key: 'mary',  name: 'Kirwan, Mary' },
+];
+function accountName(key) { const a = ACCOUNTS.find(a => a.key === key); return a ? a.name : 'Kirwan, Rory'; }
+
 let slots = [];
 
 function getNext14Days() {
@@ -260,7 +267,7 @@ function getNext14Days() {
 function defaultSlot() {
   const days = getNext14Days();
   const tue = days.find(d => d.dayName === 'Tuesday') || days[0];
-  return { id: Date.now() + Math.random(), enabled: true, iso: tue.iso, dayName: tue.dayName, label: tue.label, time: '18:10', players: ['Kirwan, Rory','','',''], fallbackWindow: 30 };
+  return { id: Date.now() + Math.random(), enabled: true, iso: tue.iso, dayName: tue.dayName, label: tue.label, time: '18:10', account: 'rory', players: ['Kirwan, Rory','','',''], fallbackWindow: 30 };
 }
 
 function init() {
@@ -275,6 +282,7 @@ function init() {
   const saved = localStorage.getItem('teebot_slots');
   if (saved) { try { slots = JSON.parse(saved); } catch(e) { slots = [defaultSlot()]; } }
   else { slots = [defaultSlot()]; }
+  slots.forEach(s => { if (!s.account) s.account = 'rory'; s.players[0] = accountName(s.account); });
   const ovr = localStorage.getItem('teebot_override');
   if (ovr) {
     document.getElementById('overrideCheck').checked = true;
@@ -373,6 +381,14 @@ function buildSlotCard(slot) {
         </label>
       </div>
     </div>
+    <div style="max-width:260px;margin-bottom:0.75rem;">
+      <label>Booking as (logs in as)</label>
+      <div class="select-wrap">
+        <select onchange="updateAccount('${slot.id}',this.value)">
+          ${ACCOUNTS.map(a => `<option value="${a.key}" ${slot.account===a.key?'selected':''}>${a.name}</option>`).join('')}
+        </select>
+      </div>
+    </div>
     <div class="form-row cols-2" style="margin-bottom:0.75rem;">
       <div>
         <label>Date</label>
@@ -408,6 +424,14 @@ function toggleSlot(id,val) { const s=slots.find(s=>String(s.id)===String(id)); 
 function updateDate(id, iso, dayName, label) {
   const s = slots.find(s => String(s.id) === String(id));
   if (s) { s.iso = iso; s.dayName = dayName; s.label = label; }
+  renderSlots(); updateSummary();
+}
+function updateAccount(id, key) {
+  const s = slots.find(s => String(s.id) === String(id));
+  if (!s) return;
+  s.account = key;
+  const name = accountName(key);
+  s.players = [name, ...s.players.slice(1).map(p => p === name ? '' : p)];
   renderSlots(); updateSummary();
 }
 function updateTime(id,val) { const s=slots.find(s=>String(s.id)===String(id)); if(s)s.time=val; renderSlots(); updateSummary(); }
@@ -446,6 +470,7 @@ async function savePlayersJson() {
       day: s.dayName,
       date: s.iso,
       time: s.time,
+      account: s.account || 'rory',
       players: s.players.filter(p => p),
       fallback_window: s.fallbackWindow || 30,
       fallback_interval: 10,
@@ -481,7 +506,26 @@ function setActionStatus(msg, err) {
   el.style.color = err ? 'var(--danger)' : 'var(--success)';
 }
 
+function findClashes() {
+  const active = slots.filter(s => s.enabled);
+  const warnings = [];
+  const seenBooker = {}, seenPlayer = {};
+  for (const s of active) {
+    const k = s.iso + '|' + s.account;
+    if (seenBooker[k]) warnings.push(`${accountName(s.account)} is booking two lines on ${s.label}.`);
+    seenBooker[k] = true;
+    for (const p of s.players.filter(p => p && p !== 'Guest')) {
+      const pk = s.iso + '|' + p;
+      if (seenPlayer[pk]) warnings.push(`${p} is in two lines on ${s.label}.`);
+      seenPlayer[pk] = true;
+    }
+  }
+  return [...new Set(warnings)];
+}
+
 async function armTeeBot() {
+  const clashes = findClashes();
+  if (clashes.length && !confirm(clashes.join('\n') + '\n\nBRS usually rejects this. Save anyway?')) return;
   const btn = document.getElementById('armBtn');
   btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> Saving...';
   setActionStatus('Saving booking config to repo...');
@@ -510,11 +554,11 @@ async function armTeeBot() {
 
 function updateSummary() {
   const tbody = document.getElementById('summaryBody');
-  if (!slots.length) { tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots</td></tr>'; return; }
+  if (!slots.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:1.5rem;">No slots</td></tr>'; return; }
   tbody.innerHTML = slots.map(s => {
     const players = s.players.filter(p=>p).join(', ') || '—';
     const status = s.enabled ? '<span class="tag tag-armed">ACTIVE</span>' : '<span class="tag tag-default">OFF</span>';
-    return `<tr><td><strong>${s.label||s.dayName}</strong></td><td style="font-family:'DM Mono',monospace;">${s.time}</td><td style="font-size:0.78rem;">${players}</td><td>${status}</td></tr>`;
+    return `<tr><td><strong>${s.label||s.dayName}</strong></td><td style="font-family:'DM Mono',monospace;">${s.time}</td><td style="font-size:0.78rem;">${accountName(s.account||'rory')}</td><td style="font-size:0.78rem;">${players}</td><td>${status}</td></tr>`;
   }).join('');
 }
 
