@@ -13,7 +13,7 @@
         "Lynch, Niall",
         "Legge, Simon"
       ],
-      "fallback_window": 30,
+      "fallback_window": 20,
       "fallback_interval": 10
     }
   ]
