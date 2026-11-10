@@ -1,18 +1,30 @@
 {
-  "release_type": "default",
-  "release_time": null,
+  "release_type": "custom",
+  "release_time": "2026-11-10T10:16",
   "bookings": [
     {
-      "day": "Saturday",
-      "date": "2026-11-14",
-      "time": "08:50",
+      "day": "Friday",
+      "date": "2026-11-13",
+      "time": "14:00",
+      "account": "mary",
       "players": [
-        "Kirwan, Rory",
-        "Kirwan, Barry",
-        "Lynch, Niall",
-        "Kelly, Edward"
+        "Kirwan, Mary",
+        "Guest",
+        "Guest",
+        "Guest"
       ],
       "fallback_window": 20,
+      "fallback_interval": 10
+    },
+    {
+      "day": "Friday",
+      "date": "2026-11-13",
+      "time": "15:00",
+      "account": "rory",
+      "players": [
+        "Kirwan, Rory"
+      ],
+      "fallback_window": 30,
       "fallback_interval": 10
     }
   ]
