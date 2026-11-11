@@ -36,6 +36,11 @@ PLAYER_IDS = {
     "Legge, Simon":        "3010",
     "Lynch, Niall":        "2197",
     "Moore, George":       "590",
+    "Barber, Susan":        "2420",
+    "Barber, Tom":          "2229",
+    "Free, Nuala":          "2497",
+    "Davidson, Alan":       "2981",
+    "Fitzpatrick, Michael": "233",
     "Guest":               "-2",
 }
 
