@@ -5,13 +5,13 @@
     {
       "day": "Saturday",
       "date": "2026-11-21",
-      "time": "09:00",
-      "account": "rory",
+      "time": "08:50",
+      "account": "barry",
       "players": [
-        "Kirwan, Rory",
         "Kirwan, Barry",
+        "Kelly, Edward",
         "Lynch, Niall",
-        "Legge, Simon"
+        "Carrick, Paul"
       ],
       "fallback_window": 10,
       "fallback_interval": 10
