@@ -154,8 +154,8 @@ async def login(page, email: str, password: str):
     await page.click('button:has-text("LOGIN")')
     await page.wait_for_load_state("domcontentloaded")
     await page.wait_for_timeout(2000)
-    if "beaverstown" not in page.url:
-        raise Exception("Login failed — check the BRS email/password secrets for this account")
+    if await page.locator('input[type="password"]').count() > 0:
+        raise Exception("Login failed — still on the login page. Check this account's username/password secrets")
     print("  ✅ Logged in")
 
 
@@ -166,96 +166,122 @@ async def navigate_to_date(page, target_dt: datetime):
     print(f"  ✅ On tee sheet: {target_dt.strftime('%A %d %B')}")
 
 
+FIND_JS = """
+(times) => {
+    // Scan the live page (no reload) for the first wanted time whose row has a Book Now button
+    const rows = [...document.querySelectorAll('tr')];
+    for (const t of times) {
+        for (const r of rows) {
+            if (r.textContent.includes(t) && r.querySelector('a.add-booking')) return t;
+        }
+    }
+    return null;
+}
+"""
+
+STATUS_JS = """
+(times) => {
+    // What the bot can see for each wanted time (for the log)
+    const rows = [...document.querySelectorAll('tr')];
+    return times.map(t => {
+        const r = rows.find(r => r.textContent.includes(t));
+        if (!r) return t + ' not on sheet';
+        return t + (r.querySelector('a.add-booking') ? ' BOOK NOW' : ' no button');
+    }).join(' | ');
+}
+"""
+
+
+async def wait_for_rows(page, fallback_times: list, timeout_ms: int = 5000) -> bool:
+    """The tee sheet rows are drawn by JavaScript after the page loads, so wait for them."""
+    sel = ", ".join(f'tr:has-text("{t}")' for t in fallback_times)
+    try:
+        await page.wait_for_selector(sel, timeout=timeout_ms)
+        return True
+    except Exception:
+        return False
+
+
 async def try_click_book_now(page, fallback_times: list):
-    content = await page.content()
-    for try_time in fallback_times:
-        if try_time not in content:
-            continue
+    """Click Book Now for the best available wanted time on the current page."""
+    try_time = await page.evaluate(FIND_JS, fallback_times)
+    if not try_time:
+        return None
+    try:
+        btn = page.locator(f'tr:has-text("{try_time}") a.add-booking').first
+        print(f"  🚀 Clicking BOOK NOW for {try_time}!")
+        await btn.click(timeout=3000)
+        await page.wait_for_load_state("domcontentloaded")
         try:
-            # Try multiple selectors — BRS uses "Book Now" (not "BOOK NOW")
-            # and the button has class "add-booking"
-            btn = None
-            for sel in [
-                f'tr:has-text("{try_time}") a.add-booking',
-                f'tr:has-text("{try_time}") a:has-text("Book Now")',
-                f'tr:has-text("{try_time}") a:has-text("BOOK NOW")',
-            ]:
-                candidate = page.locator(sel).first
-                if await candidate.count() > 0 and await candidate.is_visible():
-                    btn = candidate
-                    print(f"  Found button via: {sel}")
-                    break
-
-            if btn is None:
-                continue
-
-            print(f"  🚀 Clicking BOOK NOW for {try_time}!")
-            await btn.click(timeout=3000)
-            await page.wait_for_load_state("domcontentloaded")
-            await page.wait_for_timeout(1500)
-
-            if await page.locator('text="already booked"').count() > 0:
-                print(f"  ✗ {try_time} already fully booked — trying next")
-                for sel in ['button:has-text("BACK")', 'button:has-text("Back")', 'button:has-text("OK")']:
-                    try:
-                        await page.locator(sel).first.click(timeout=1500)
-                        await page.wait_for_timeout(500)
-                        break
-                    except: pass
-                continue
-
-            if await page.locator('text="Booking Details"').count() > 0:
-                print(f"  ✅ Booking form open for {try_time}")
-                return try_time
-        except Exception as e:
-            print(f"  ⚠️  Error trying {try_time}: {e}")
-            continue
-    return None
+            await page.wait_for_selector('text="Booking Details"', timeout=5000)
+            print(f"  ✅ Booking form open for {try_time}")
+            return try_time
+        except Exception:
+            print(f"  ✗ {try_time} did not open a booking form (probably just taken)")
+            return None
+    except Exception as e:
+        print(f"  ⚠️  Error clicking {try_time}: {e}")
+        return None
 
 
 async def wait_and_grab_slot(page, preferred_time: str, fallback_times: list,
                               release_dt: datetime) -> bool:
     deadline = release_dt + timedelta(seconds=TIMEOUT_AFTER_RELEASE)
     attempt = 0
+    last_reload = datetime.utcnow()
+    last_status = datetime.utcnow() - timedelta(seconds=60)
+
+    await wait_for_rows(page, fallback_times)
+    print(f"  Sheet now: {await page.evaluate(STATUS_JS, fallback_times)}")
 
     print(f"  Checking if slots already available...")
-    booked_time = await try_click_book_now(page, fallback_times)
-    if booked_time:
+    if await try_click_book_now(page, fallback_times):
         return True
 
-    secs_to_release = (release_dt - datetime.utcnow()).total_seconds()
-    if secs_to_release > 0:
-        print(f"  ⏳ {secs_to_release:.0f}s to release at {release_dt.strftime('%H:%M:%S')} — hammering refresh...")
-    else:
-        print(f"  Slots not yet visible — refreshing...")
+    secs = (release_dt - datetime.utcnow()).total_seconds()
+    print(f"  ⏳ {secs:.0f}s to release at {release_dt.strftime('%H:%M:%S')} UTC — watching the sheet...")
 
-    while datetime.now() < deadline:
+    while datetime.utcnow() < deadline:
         attempt += 1
-        try:
-            await page.reload(wait_until="domcontentloaded", timeout=8000)
-        except Exception:
-            await asyncio.sleep(0.2)
-            continue
+        now = datetime.utcnow()
+        secs = (release_dt - now).total_seconds()
+
+        if secs > 1:
+            # Before release: watch the live page (BRS may open it in place),
+            # refreshing every 15s so the page stays current
+            if (now - last_reload).total_seconds() >= 15:
+                await page.reload(wait_until="domcontentloaded", timeout=10000)
+                await wait_for_rows(page, fallback_times)
+                last_reload = datetime.utcnow()
+            else:
+                await asyncio.sleep(0.2)
+        else:
+            # From release: refresh, WAIT for the rows to be drawn, then look
+            try:
+                await page.reload(wait_until="domcontentloaded", timeout=10000)
+            except Exception:
+                await asyncio.sleep(0.2)
+                continue
+            await wait_for_rows(page, fallback_times)
+            last_reload = datetime.utcnow()
 
         booked_time = await try_click_book_now(page, fallback_times)
         if booked_time:
             elapsed = (datetime.utcnow() - release_dt).total_seconds()
-            print(f"  ✅ Grabbed {booked_time} at {elapsed:+.1f}s from release (attempt {attempt})")
+            print(f"  ✅ Grabbed {booked_time} at {elapsed:+.1f}s from release (check {attempt})")
             return True
 
-        secs_to_release = (release_dt - datetime.utcnow()).total_seconds()
-        if secs_to_release > 5:
-            if attempt % 10 == 0:
-                print(f"  ⏳ {secs_to_release:.0f}s to release (attempt {attempt})")
-            await asyncio.sleep(REFRESH_INTERVAL_SECS)
-        elif secs_to_release > 0:
-            await asyncio.sleep(0.1)
-        else:
-            secs_past = abs(secs_to_release)
-            if attempt % 5 == 0:
-                print(f"  ⏳ +{secs_past:.0f}s past release, attempt {attempt}")
-            await asyncio.sleep(0.3)
+        if (datetime.utcnow() - last_status).total_seconds() >= 10:
+            secs = (release_dt - datetime.utcnow()).total_seconds()
+            when = f"{secs:.0f}s to release" if secs > 0 else f"+{-secs:.0f}s past release"
+            try:
+                seen = await page.evaluate(STATUS_JS, fallback_times)
+            except Exception:
+                seen = "page reloading"
+            print(f"  ⏳ {when} — sheet shows: {seen}")
+            last_status = datetime.utcnow()
 
+    await page.goto(page.url)  # leave a clean page for the screenshot
     print(f"  ❌ Timed out — no slot found after {TIMEOUT_AFTER_RELEASE}s past release")
     return False
 
