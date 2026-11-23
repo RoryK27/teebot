@@ -10,8 +10,8 @@
       "players": [
         "Kirwan, Rory",
         "Kirwan, Barry",
-        "Lynch, Niall",
-        "Kelly, Edward"
+        "Kelly, Edward",
+        "Lynch, Niall"
       ],
       "fallback_window": 10,
       "fallback_interval": 10
@@ -24,7 +24,6 @@
       "players": [
         "Kirwan, Rory",
         "Kirwan, Barry",
-        "Lynch, Niall",
         "Kelly, Edward"
       ],
       "fallback_window": 10,
