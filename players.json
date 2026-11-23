@@ -5,7 +5,7 @@
     {
       "day": "Saturday",
       "date": "2026-11-28",
-      "time": "08:50",
+      "time": "09:00",
       "account": "rory",
       "players": [
         "Kirwan, Rory",
@@ -14,6 +14,20 @@
         "Lynch, Niall"
       ],
       "fallback_window": 10,
+      "fallback_interval": 10
+    },
+    {
+      "day": "Sunday",
+      "date": "2026-11-29",
+      "time": "09:00",
+      "account": "rory",
+      "players": [
+        "Kirwan, Rory",
+        "Kirwan, Barry",
+        "Kelly, Edward",
+        "Carrick, Paul"
+      ],
+      "fallback_window": 30,
       "fallback_interval": 10
     }
   ]
